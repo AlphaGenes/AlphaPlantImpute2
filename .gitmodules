@@ -1,0 +1,3 @@
+[submodule "src/tinyhouse"]
+	path = src/tinyhouse
+	url = https://bitbucket.org/hickeyjohnteam/tinyhouse.git
