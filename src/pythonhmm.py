@@ -24,8 +24,12 @@ def get_args():
     InputOutput.addInputFileParser(parser)
 
     pythonhmm_parser = parser.add_argument_group('pythonhmm Arguments')
+    pythonhmm_parser.add_argument('-method', default='dosages', required=False, type=str, choices=['dosages', 'sampler'],
+                                  help="Imputation method.")
     pythonhmm_parser.add_argument('-hdthreshold', default=0.9, required=False, type=float,
-                                  help='Threshold for determining which haplotypes to include in the haplotype library')
+                                  help='Threshold for determining which haplotypes to include in the haplotype library.')
+    pythonhmm_parser.add_argument('-nsamples', default=10, required=False, type=int,
+                                  help="Number of samples to to use with the 'sampler' method.")
 
     return InputOutput.parseArgs("pythonhmm", parser)
 
@@ -43,16 +47,19 @@ def get_haplotype_library(pedigree, threshold):
     return haplotype_library
 
 
-def do_imputation(haplotype_library, pedigree):
-    """Impute individuals using haploidHMM and a haplotype library"""
-
+def do_imputation(args, haplotype_library, pedigree):
+    """Impute individuals using haploidHMM and a haplotype library, setting the dosages for each individual
+    The method can be 'dosages' which uses the forward-backward probabilities or 'sampler' which samples haplotypes 
+    from the forward and backward probabilities"""
+    
     n_loci = pedigree.nLoci
     for individual in pedigree:
         dosages = np.full(n_loci, 0., dtype=np.float32)
         for haplotype in individual.haplotypes:
             dosages += BasicHMM.haploidHMM(haplotype, haplotype_library,
                                            error=0.01, recombinationRate=1/n_loci,
-                                           callingMethod='dosages')
+                                           n_samples=args.nsamples,
+                                           callingMethod=args.method)
         individual.dosages = dosages
 
 
@@ -66,7 +73,7 @@ def main():
     InputOutput.readInPedigreeFromInputs(pedigree, args, genotypes=True, haps=True, reads=False)
 
     haplotype_library = get_haplotype_library(pedigree, args.hdthreshold)
-    do_imputation(haplotype_library, pedigree)
+    do_imputation(args, haplotype_library, pedigree)
 
     pedigree.writeDosages(args.out + '.dosages')
 
