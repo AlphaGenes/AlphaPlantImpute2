@@ -1,6 +1,8 @@
 """Simple haploid HMM implementation"""
 
 import argparse
+import concurrent.futures
+from itertools import repeat
 from numba import jit
 import numpy as np
 from .tinyhouse import BasicHMM, InputOutput, Pedigree, HaplotypeLibrary
@@ -103,6 +105,7 @@ def create_haplotype_library(individuals, n_loci, maf):  # can/should this be a 
     return haplotype_library
 
 
+@jit(nopython=True)
 def correct_haplotypes(paternal_hap, maternal_hap, true_genotype, maf):
     """Correct paternal and maternal haplotype pair so that they match the true genotype"""
     
@@ -119,50 +122,66 @@ def correct_haplotypes(paternal_hap, maternal_hap, true_genotype, maf):
     maternal_hap[mask] = m
     
 
-def refine_library(args, individuals, haplotype_library_full, maf, recombination_rate, error):
-    """Refine haplotype library"""
-    
-    #haplotype_library_updated = np.empty_like(haplotype_library, dtype=np.int8)
+@jit(nopython=True, nogil=True)
+def sample_haplotype_pair(genotype, haplotype_library, recombination_rate, error, maf):
+    """Sample a pair of haplotypes for an individual with genotype 'genotypes'
+    against a haplotype library 'haplotype_library'
+    Note: haplotype_library should not contain a copy of the individual's haplotypes"""
+    # n_loci needs to be a global (or passed in) so we don't have to check with each call to this function
+    n_loci = len(genotype)
 
-    n_loci = haplotype_library_full._n_loci   # too hacky
-    paternal_hap = np.full(n_loci, 9, dtype=np.int8)
-    maternal_hap = np.full(n_loci, 9, dtype=np.int8)
+    # Pass missing haplotypes (all 9) to getDiploidPointEstimates(), so that the genotypes are used directly
+    haplotypes = np.full((2,n_loci), 9, dtype=np.int8)
+
+    point_estimate = BasicHMM.getDiploidPointEstimates(genotype, haplotypes[0], haplotypes[1],
+                                                       haplotype_library, haplotype_library, error)
+    forward_probs = BasicHMM.diploidForward(point_estimate, recombination_rate)
+    haplotypes = BasicHMM.diploidSampleHaplotypes(forward_probs, recombination_rate,
+                                                  haplotype_library, haplotype_library)
+
+    correct_haplotypes(haplotypes[0], haplotypes[1], genotype, maf)
+    
+    return haplotypes
+
+
+def precompute_masks(library, individuals):  # better name and possibly move to HaplotypeLibrary! - needs individuals -> identifiers
+    """Calculate haplotype library masks for all individuals
+    The masks are a list of row indices into the haplotype library array that select all haplotypes except 
+    for the given individual (identifier)
+    Returns a generator of 1D NumPy arrays"""
+    # Note: ugly use of the 'private' member: HaplotypeLibrary._identifiers()
+    return ((library._identifiers != individual.idx) for individual in individuals)
+
+
+def refine_library(args, individuals, haplotype_library, maf, recombination_rate, error):
+    """Refine haplotype library"""
+
+    genotypes = (individual.genotypes for individual in individuals) # generator
 
     for iteration in range(args.nrounds):
         print('Iteration', iteration)
 
-        # Choose random sample for each iteration
-        haplotype_library = haplotype_library_full.sample(args.nhaplotypes)
-        # haplotype_library is a HaplotypeLibrary()
-        
-        for individual in individuals:
-            print(f'  Individual idn,idx: {individual.idn},{individual.idx}')#, end=', ')
+        # Choose random sample of haplotypes for each iteration
+        sample = haplotype_library.sample(args.nhaplotypes) # haplotype_library_sample is a HaplotypeLibrary()
 
-            haplotype_library_masked = haplotype_library.masked(individual.idx) 
-            # haplotype_library_masked is a numpy array
-            # This is confusing
+        # Generator of haplotype libraries for ThreadPoolExecutor.map()
+        # each subsequent library has the corresponding individual's haplotypes masked out
+        masks = precompute_masks(sample, individuals)
+        # Both following work, which is faster?
+#        haplotype_libraries = (sample._haplotypes[mask] for mask in masks)
+        haplotype_libraries = (sample.masked(individual.idx) for individual in individuals)
 
-            # Pass missing haplotypes to getDiploidPointEstimates(), so that the genotypes are used directly
-            paternal_hap[:] = 9
-            maternal_hap[:] = 9
+        # Parallel loop over individuals to sample haplotypes
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:    # NEED to get workers from command line
+            results = executor.map(sample_haplotype_pair, genotypes, haplotype_libraries,
+                                   repeat(recombination_rate), repeat(error), repeat(maf))
 
-            # Sample
-            point_estimate = BasicHMM.getDiploidPointEstimates(individual.genotypes, paternal_hap, maternal_hap,  
-                                                               haplotype_library_masked, haplotype_library_masked, error)
-            forward_probs = BasicHMM.diploidForward(point_estimate, recombination_rate)   
-            paternal_hap, maternal_hap = BasicHMM.diploidSampleHaplotypes(forward_probs, recombination_rate, 
-                                                                          haplotype_library_masked, haplotype_library_masked)
-
-            # Correct paternal and maternal haplotype pair so that they match the true genotype
-            # Could do this for the first n iterations (if iteraction < 5)        
-            if True: 
-                correct_haplotypes(paternal_hap, maternal_hap, individual.genotypes, maf)
-            #print_mismatches(individual, paternal_hap, maternal_hap)
-
-            # Save updated haplotypes in the full library
-            haplotype_library_full.update_pair(paternal_hap, maternal_hap, individual.idx)
+        # Update library
+        identifiers = [individual.idx for individual in individuals]
+        for i, haplotypes in enumerate(results):
+            haplotype_library.update_pair(haplotypes[0], haplotypes[1], identifiers[i])
             
-    return haplotype_library_full # this probably creates a copy of the library. Need to update it in place
+    return haplotype_library # this probably? creates a copy of the library. Need to update it in place
 
 
 def print_mismatches(individual, paternal_hap, maternal_hap):
@@ -241,7 +260,7 @@ def main():
     print('# HD individuals', len(individuals))
     haplotype_library = create_haplotype_library(individuals, n_loci, pedigree.maf)
     haplotype_library = refine_library(args, individuals, haplotype_library, pedigree.maf, recombination_rate, error)
-    
+
     # Imputation
     impute_individuals(args, pedigree, haplotype_library, recombination_rate, error)
 
