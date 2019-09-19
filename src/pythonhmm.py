@@ -5,6 +5,7 @@ import concurrent.futures
 from itertools import repeat
 from numba import jit
 import numpy as np
+import random
 from .tinyhouse import BasicHMM, InputOutput, Pedigree, HaplotypeLibrary
 
 # Create dummy profile decorator if not defined
@@ -15,6 +16,10 @@ except NameError as error:
         """Dummy decorator"""
         return dummy
 
+# Globals
+_n_loci = None
+_seed = None
+
 
 def get_args():
     """Get and parse command-line arguments"""
@@ -24,8 +29,6 @@ def get_args():
     InputOutput.addInputFileParser(parser)
 
     pythonhmm_parser = parser.add_argument_group('PythonHMM Arguments')
-#    pythonhmm_parser.add_argument('-method', default='dosages', required=False, type=str, choices=['dosages', 'sampler'],
-#                                  help="Imputation method.")
     pythonhmm_parser.add_argument('-hdthreshold', default=0.9, required=False, type=float,
                                   help='Threshold for determining which haplotypes to include in the haplotype library.')
     pythonhmm_parser.add_argument('-nsamples', default=10, required=False, type=int,
@@ -34,10 +37,12 @@ def get_args():
                                   help="Number of haplotypes to use in the haplotype library.")
     pythonhmm_parser.add_argument('-nrounds', default=20, required=False, type=int,
                                   help="Number of rounds of HMM sampling.")
+    pythonhmm_parser.add_argument('-maxthreads', default=1, required=False, type=int,
+                                  help='Number of threads to use. Default: 1.')
 
     return InputOutput.parseArgs("pythonhmm", parser)
 
-
+# NOT USED
 def sample_individuals(pedigree, n_individuals):
     """Return a randomly sampled number of individuals from a pedigree
     or equivalently a list of individuals
@@ -89,14 +94,15 @@ def generate_haplotypes(genotype, maf):
         else:
             raise ValueError('Genotype not in {0,1,2,9}')
 
+
     return p_hap, m_hap
 
 
-def create_haplotype_library(individuals, n_loci, maf):  # can/should this be a member of HaplotypeLibrary() or pedigree()?
+def create_haplotype_library(individuals, maf):  # can/should this be a member of HaplotypeLibrary() or pedigree()?
     """Create a haplotype library from list of individuals
     The population's minor allele frequency (maf) is used to randomly create alleles at missing loci"""
 
-    haplotype_library = HaplotypeLibrary.HaplotypeLibrary2(n_loci=n_loci)
+    haplotype_library = HaplotypeLibrary.HaplotypeLibrary2(n_loci=_n_loci)
     for individual in individuals:
         paternal_haplotype, maternal_haplotype = generate_haplotypes(individual.genotypes, maf)
         haplotype_library.append(paternal_haplotype, identifier=individual.idx)
@@ -126,12 +132,10 @@ def correct_haplotypes(paternal_hap, maternal_hap, true_genotype, maf):
 def sample_haplotype_pair(genotype, haplotype_library, recombination_rate, error, maf):
     """Sample a pair of haplotypes for an individual with genotype 'genotypes'
     against a haplotype library 'haplotype_library'
-    Note: haplotype_library should not contain a copy of the individual's haplotypes"""
-    # n_loci needs to be a global (or passed in) so we don't have to check with each call to this function
-    n_loci = len(genotype)
+    Note: the supplied haplotype_library should not contain a copy of the individual's haplotypes"""
 
     # Pass missing haplotypes (all 9) to getDiploidPointEstimates(), so that the genotypes are used directly
-    haplotypes = np.full((2,n_loci), 9, dtype=np.int8)
+    haplotypes = np.full((2, _n_loci), 9, dtype=np.int8)
 
     point_estimate = BasicHMM.getDiploidPointEstimates(genotype, haplotypes[0], haplotypes[1],
                                                        haplotype_library, haplotype_library, error)
@@ -144,65 +148,47 @@ def sample_haplotype_pair(genotype, haplotype_library, recombination_rate, error
     return haplotypes
 
 
-def precompute_masks(library, individuals):  # better name and possibly move to HaplotypeLibrary! - needs individuals -> identifiers
-    """Calculate haplotype library masks for all individuals
-    The masks are a list of row indices into the haplotype library array that select all haplotypes except
-    for the given individual (identifier)
-    Returns a generator of 1D NumPy arrays"""
-    # Note: ugly use of the 'private' member: HaplotypeLibrary._identifiers()
-    return ((library._identifiers != individual.idx) for individual in individuals)
-
-
-def refine_library(args, individuals, haplotype_library, maf, recombination_rate, error):
+def refine_library(individuals, haplotype_library, maf, recombination_rate, error):
     """Refine haplotype library"""
 
-    genotypes = (individual.genotypes for individual in individuals) # generator
+    print(f'Refining haplotype library, {_args.nrounds} iterations')
 
-    for iteration in range(args.nrounds):
-        print('Iteration', iteration)
+    # List of genotypes and identifiers to iterate over
+    genotypes = [individual.genotypes for individual in individuals]
+    identifiers = [individual.idx for individual in individuals]
+
+    # Loop
+    for iteration in range(_args.nrounds):
+        print('  Iteration', iteration)
 
         # Choose random sample of haplotypes for each iteration
-        sample = haplotype_library.sample(args.nhaplotypes) # haplotype_library_sample is a HaplotypeLibrary()
+        sample = haplotype_library.sample(_args.nhaplotypes) # sample is a HaplotypeLibrary()
 
         # Generator of haplotype libraries for ThreadPoolExecutor.map()
         # each subsequent library has the corresponding individual's haplotypes masked out
-        masks = precompute_masks(sample, individuals)
-        # Both following work, which is faster?
-#        haplotype_libraries = (sample._haplotypes[mask] for mask in masks)
         haplotype_libraries = (sample.masked(individual.idx) for individual in individuals)
 
-        # Parallel loop over individuals to sample haplotypes
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:    # NEED to get workers from command line
-            results = executor.map(sample_haplotype_pair, genotypes, haplotype_libraries,
-                                   repeat(recombination_rate), repeat(error), repeat(maf))
+        # Sample haplotypes for all individuals in the library
+        if _args.maxthreads == 1:
+            # Single threaded
+            results = map(sample_haplotype_pair, genotypes, haplotype_libraries,
+                          repeat(recombination_rate), repeat(error), repeat(maf))
+        else:
+            # Multithreaded
+            with concurrent.futures.ThreadPoolExecutor(max_workers=_args.maxthreads) as executor:
+                results = executor.map(sample_haplotype_pair, genotypes, haplotype_libraries,
+                                       repeat(recombination_rate), repeat(error), repeat(maf))
 
         # Update library
-        identifiers = [individual.idx for individual in individuals]
-        # REPLACE: for haplotypes, identifier in zip(results, identifiers):
-        for i, haplotypes in enumerate(results):
-            haplotype_library.update_pair(haplotypes[0], haplotypes[1], identifiers[i])
-
-    return haplotype_library # this probably? creates a copy of the library. Need to update it in place
-
-# REMOVE this as no longer used
-def print_mismatches(individual, paternal_hap, maternal_hap):
-    # Use np.min([a,b]) to handle swapped haplotypes
-    hap0 = individual.haplotypes[0]
-    hap1 = individual.haplotypes[1]
-    paternal_mismatches = np.min([np.sum((hap0 - paternal_hap) != 0), np.sum((hap1 - paternal_hap) != 0)])
-    maternal_mismatches = np.min([np.sum((hap0 - maternal_hap) != 0), np.sum((hap1 - maternal_hap) != 0)])
-    print(f'p, m, g, corr', paternal_mismatches, maternal_mismatches, np.sum(((hap0+hap1) - (paternal_hap+maternal_hap)) != 0),
-          np.corrcoef(hap0+hap1, paternal_hap+maternal_hap)[0,1])
+        for haplotypes, identifier in zip(results, identifiers):
+            haplotype_library.update_pair(haplotypes[0], haplotypes[1], identifier)
 
 
 @jit(nopython=True, nogil=True)
 def get_dosages(genotype, haplotype_library, recombination_rate, error):
     """"""
-    # n_loci needs to be a global (or passed in) so we don't have to check with each call to this function
-    n_loci = len(genotype)
-
     # Pass missing haplotypes (all 9) to getDiploidPointEstimates(), so that the genotypes are used directly
-    haplotypes = np.full((2,n_loci), 9, dtype=np.int8)
+    haplotypes = np.full((2, _n_loci), 9, dtype=np.int8)
 
     # Get dosages - should this be a helper function - its like diploidHMM(..., callingMethod='dosages')
     point_estimate = BasicHMM.getDiploidPointEstimates(genotype, haplotypes[0], haplotypes[1],
@@ -213,39 +199,41 @@ def get_dosages(genotype, haplotype_library, recombination_rate, error):
     return dosages
 
 
-np.set_printoptions(precision=2, suppress=True, linewidth=150)
-def impute_individuals(args, pedigree, haplotype_library_full, recombination_rate, error): # haplotype_library_full -> haplotype_library
+def impute_individuals(pedigree, haplotype_library, recombination_rate, error): # haplotype_library_full -> haplotype_library
     """Impute all individuals in the pedigree"""
 
-    print('Imputation')
-    print(haplotype_library_full._haplotypes.shape)
+    n_iterations = 5
+    print(f'Imputing individuals, {n_iterations} iterations')
 
-    n_loci = pedigree.nLoci
-#     paternal_hap = np.full(n_loci, 9, dtype=np.int8)
-#     maternal_hap = np.full(n_loci, 9, dtype=np.int8)
-
-    genotypes = (individual.genotypes for individual in pedigree) # a generator
+    # List of genotypes to iterate over
+    genotypes = [individual.genotypes for individual in pedigree]
 
     # Set all dosages to zero, so they can be incrementally added to
     for individual in pedigree:
-        individual.dosages = np.full(n_loci, 0., dtype=np.float32)
+        individual.dosages = np.full(_n_loci, 0., dtype=np.float32)
 
     # Loop
-    n_iterations = 5
     for iteration in range(n_iterations):
-        print('Iteration', iteration)
+        print('  Iteration', iteration)
 
-        haplotype_library = haplotype_library_full.sample(args.nhaplotypes)._haplotypes  # UGLY
+        # Sample the haplotype library for each iteration
+        haplotype_library_sample = haplotype_library.sample(_args.nhaplotypes)._haplotypes  # UGLY, have a return_library=False option?
 
-        # Does it make sense to impute high density individuals? Yes to fill in missingness, but not if it introduces additional errors
-        # Handle LD and HD separately?
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:    # NEED to get workers from command line
-            results = executor.map(get_dosages, genotypes, repeat(haplotype_library),
-                                   repeat(recombination_rate), repeat(error))
+        # Get dosages for all individuals
+        #   Does it make sense to impute high density individuals? Yes to fill in missingness, but not if it introduces additional errors
+        #   Handle LD and HD separately?
+        if _args.maxthreads == 1:
+            # Single threaded
+            results = map(get_dosages, genotypes, repeat(haplotype_library_sample),
+                          repeat(recombination_rate), repeat(error))
+        else:
+            # Multithreaded
+            with concurrent.futures.ThreadPoolExecutor(max_workers=_args.maxthreads) as executor:
+                results = executor.map(get_dosages, genotypes, repeat(haplotype_library_sample),
+                                       repeat(recombination_rate), repeat(error))
 
         # Update dosages from results
         for dosages, individual in zip(results, pedigree):
-            print(individual.idx, (individual.genotypes-np.round(dosages))[:10])
             individual.dosages += dosages
 
     # Normalize dosages and generate genotypes
@@ -254,79 +242,54 @@ def impute_individuals(args, pedigree, haplotype_library_full, recombination_rat
         individual.genotypes = np.int8(np.round(individual.dosages))
 
 
-def impute_individuals2(args, pedigree, haplotype_library_full, recombination_rate, error):
-    """Impute all individuals in the pedigree"""
-
-    print('Imputation')
-    print(haplotype_library_full._haplotypes.shape)
-    n_loci = pedigree.nLoci
-    paternal_hap = np.full(n_loci, 9, dtype=np.int8)
-    maternal_hap = np.full(n_loci, 9, dtype=np.int8)
-
-    for individual in pedigree:
-        individual.dosages = np.full(n_loci, 0., dtype=np.float32)
-
-    n_iterations = 5
-    for iteration in range(n_iterations):
-        print('Iteration', iteration)
-
-        haplotype_library = haplotype_library_full.sample(args.nhaplotypes)._haplotypes  # UGLY
-
-        # Does it make sense to impute high density individuals? Yes to fill in missingness, but not if it introduces additional errors
-        for individual in pedigree:
-
-            print(f'  Individual idn,idx: {individual.idn},{individual.idx}')
-            # Want to impute actual genotypes, not dosages
-
-            paternal_hap[:] = 9
-            maternal_hap[:] = 9
-            point_estimate = BasicHMM.getDiploidPointEstimates(individual.genotypes, paternal_hap, maternal_hap,
-                                                               haplotype_library, haplotype_library, error)
-            #forward_probs = BasicHMM.diploidForward(point_estimate, recombination_rate)
-            #paternal_hap, maternal_hap = BasicHMM.diploidSampleHaplotypes(forward_probs, recombination_rate,
-            #                                                              haplotype_library, haplotype_library)
-
-            total_probs = BasicHMM.diploidForwardBackward(point_estimate, recombination_rate)
-            individual.dosages += BasicHMM.getDiploidDosages(total_probs, haplotype_library, haplotype_library)
-
-    for individual in pedigree:
-        individual.dosages /= n_iterations
-        individual.genotypes = np.int8(np.round(individual.dosages))
+def set_seed():
+    """Set random seed for np.random and random and numba equivalents"""
+    if _args.seed and _args.maxthreads > 1:
+        print('The random seed option requires maxthreads=1: setting maxthreads to 1')
+        _args.maxthreads = 1
+    if _args.seed:
+        print(f'Setting random seed to {_args.seed}')
+        InputOutput.setNumbaSeeds(_args.seed)
+        np.random.seed(_args.seed)
+        random.seed(_args.seed)
 
 
 @profile
 def main():
     """Main execution code"""
 
-    args = get_args()
+    global _args, _n_loci
+    _args = get_args()
 
+    # Random seed
+    set_seed()
+
+    # Read data
     pedigree = Pedigree.Pedigree()
-    InputOutput.readInPedigreeFromInputs(pedigree, args, genotypes=True, haps=False, reads=False)
+    InputOutput.readInPedigreeFromInputs(pedigree, _args, genotypes=True, haps=False, reads=False)
+    _n_loci = pedigree.nLoci
 
     # Calculate MAF and determine high density individuals
     pedigree.setMaf()
-    pedigree.high_density_threshold = args.hdthreshold
+    pedigree.high_density_threshold = _args.hdthreshold
     pedigree.set_high_density()
 
     # Various parameters
-    n_loci = pedigree.nLoci
-    error = np.full(n_loci, 0.01, dtype=np.float32)
-    recombination_rate = np.full(n_loci, 1/n_loci, dtype=np.float32)
-
-    # Subsample
+    error = np.full(_n_loci, 0.01, dtype=np.float32)
+    recombination_rate = np.full(_n_loci, 1/_n_loci, dtype=np.float32)
 
     # Library
     individuals = high_density_individuals(pedigree)
     print('# HD individuals', len(individuals))
-    haplotype_library = create_haplotype_library(individuals, n_loci, pedigree.maf)
-    haplotype_library = refine_library(args, individuals, haplotype_library, pedigree.maf, recombination_rate, error)
+    haplotype_library = create_haplotype_library(individuals, pedigree.maf)
+    refine_library(individuals, haplotype_library, pedigree.maf, recombination_rate, error)
 
-    # Imputation
-    impute_individuals(args, pedigree, haplotype_library, recombination_rate, error)
+   # Imputation
+    impute_individuals(pedigree, haplotype_library, recombination_rate, error)
 
     # Output
-    pedigree.writeDosages(args.out + '.dosages')
-    pedigree.writeGenotypes(args.out + '.genotypes')
+    pedigree.writeDosages(_args.out + '.dosages')
+    pedigree.writeGenotypes(_args.out + '.genotypes')
 
 
 if __name__ == "__main__":
