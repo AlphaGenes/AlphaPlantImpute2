@@ -102,12 +102,13 @@ def create_haplotype_library(individuals, maf):  # can/should this be a member o
     """Create a haplotype library from list of individuals
     The population's minor allele frequency (maf) is used to randomly create alleles at missing loci"""
 
-    haplotype_library = HaplotypeLibrary.HaplotypeLibrary2(n_loci=_n_loci)
+    haplotype_library = HaplotypeLibrary.HaplotypeLibrary(n_loci=_n_loci)
     for individual in individuals:
         paternal_haplotype, maternal_haplotype = generate_haplotypes(individual.genotypes, maf)
         haplotype_library.append(paternal_haplotype, identifier=individual.idx)
         haplotype_library.append(maternal_haplotype, identifier=individual.idx)
 
+    haplotype_library.freeze()
     return haplotype_library
 
 
