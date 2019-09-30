@@ -8,6 +8,7 @@ import numpy as np
 import random
 from .tinyhouse import BasicHMM, InputOutput, Pedigree, HaplotypeLibrary
 
+from .tinyhouse import Utils
 # Create dummy profile decorator if not defined
 try:
     profile
@@ -129,6 +130,7 @@ def correct_haplotypes(paternal_hap, maternal_hap, true_genotype, maf):
     maternal_hap[mask] = m
 
 
+# @profile
 @jit(nopython=True, nogil=True)
 def sample_haplotype_pair(genotype, haplotype_library, recombination_rate, error, maf):
     """Sample a pair of haplotypes for an individual with genotype 'genotypes'
@@ -136,10 +138,14 @@ def sample_haplotype_pair(genotype, haplotype_library, recombination_rate, error
     Note: the supplied haplotype_library should not contain a copy of the individual's haplotypes"""
 
     # Pass missing haplotypes (all 9) to getDiploidPointEstimates(), so that the genotypes are used directly
-    haplotypes = np.full((2, _n_loci), 9, dtype=np.int8)
+    n_loci = len(genotype)
+    haplotypes = np.full((2, n_loci), 9, dtype=np.int8)
+    
+    nPat = haplotype_library.shape[0]
+    nMat = haplotype_library.shape[0]
+    pointEst = np.full((n_loci, nPat, nMat), 1, dtype = np.float32)
 
-    point_estimate = BasicHMM.getDiploidPointEstimates(genotype, haplotypes[0], haplotypes[1],
-                                                       haplotype_library, haplotype_library, error)
+    point_estimate = BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library, error, pointEst)
     forward_probs = BasicHMM.diploidForward(point_estimate, recombination_rate)
     haplotypes = BasicHMM.diploidSampleHaplotypes(forward_probs, recombination_rate,
                                                   haplotype_library, haplotype_library)
@@ -149,6 +155,7 @@ def sample_haplotype_pair(genotype, haplotype_library, recombination_rate, error
     return haplotypes
 
 
+@profile
 def refine_library(individuals, haplotype_library, maf, recombination_rate, error):
     """Refine haplotype library"""
 
@@ -185,15 +192,21 @@ def refine_library(individuals, haplotype_library, maf, recombination_rate, erro
             haplotype_library.update_pair(haplotypes[0], haplotypes[1], identifier)
 
 
-@jit(nopython=True, nogil=True)
+# @jit(nopython=True, nogil=True)
 def get_dosages(genotype, haplotype_library, recombination_rate, error):
     """"""
     # Pass missing haplotypes (all 9) to getDiploidPointEstimates(), so that the genotypes are used directly
-    haplotypes = np.full((2, _n_loci), 9, dtype=np.int8)
+    
+    n_loci = len(genotype)
+    nPat = haplotype_library.shape[0]
+    nMat = haplotype_library.shape[0]
+
+    haplotypes = np.full((2, n_loci), 9, dtype=np.int8)
 
     # Get dosages - should this be a helper function - its like diploidHMM(..., callingMethod='dosages')
-    point_estimate = BasicHMM.getDiploidPointEstimates(genotype, haplotypes[0], haplotypes[1],
-                                                       haplotype_library, haplotype_library, error)
+    pointEst = np.full((n_loci, nPat, nMat), 1, dtype = np.float32)
+
+    point_estimate = BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library, error, pointEst)
     total_probs = BasicHMM.diploidForwardBackward(point_estimate, recombination_rate)
     dosages = BasicHMM.getDiploidDosages(total_probs, haplotype_library, haplotype_library)
 

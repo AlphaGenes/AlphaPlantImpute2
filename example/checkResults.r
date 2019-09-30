@@ -57,4 +57,4 @@ getAccuracy= function(fileName){
 }
 
 print("Genotypes")
-getAccuracy("outputs/ai2.genotypes")
+getAccuracy("out.dosages")
