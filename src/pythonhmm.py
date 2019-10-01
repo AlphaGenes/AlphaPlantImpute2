@@ -1,4 +1,4 @@
-"""Simple haploid HMM implementation"""
+"""PythonHMM: a program for imputation"""
 
 import argparse
 import concurrent.futures
@@ -137,7 +137,6 @@ def sample_haplotype_pair(genotype, haplotype_library, recombination_rate, error
     return haplotypes
 
 
-@profile
 def refine_library(args, individuals, haplotype_library, maf, recombination_rate, error):
     """Refine haplotype library"""
 
@@ -176,8 +175,7 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
 
 @jit(nopython=True, nogil=True)
 def get_dosages(genotype, haplotype_library, recombination_rate, error):
-    """"""
-    # Pass missing haplotypes (all 9) to getDiploidPointEstimates(), so that the genotypes are used directly
+    """Get dosages for an individual's genotype"""
     
     n_loci = len(genotype)
     nPat = haplotype_library.shape[0]
