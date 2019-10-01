@@ -113,7 +113,6 @@ def correct_haplotypes(paternal_hap, maternal_hap, true_genotype, maf):
     maternal_hap[mask] = m
 
 
-# @profile
 @jit(nopython=True, nogil=True)
 def sample_haplotype_pair(genotype, haplotype_library, recombination_rate, error, maf):
     """Sample a pair of haplotypes for an individual with genotype 'genotypes'
@@ -124,11 +123,11 @@ def sample_haplotype_pair(genotype, haplotype_library, recombination_rate, error
     n_loci = len(genotype)
     haplotypes = np.full((2, n_loci), 9, dtype=np.int8)
     
-    nPat = haplotype_library.shape[0]
-    nMat = haplotype_library.shape[0]
-    pointEst = np.full((n_loci, nPat, nMat), 1, dtype = np.float32)
+    n_pat = haplotype_library.shape[0]
+    n_mat = haplotype_library.shape[0]
+    point_estimate = np.empty((n_loci, n_pat, n_mat), dtype=np.float32)
 
-    point_estimate = BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library, error, pointEst)
+    BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library, error, point_estimate)
     forward_probs = BasicHMM.diploidForward(point_estimate, recombination_rate)
     haplotypes = BasicHMM.diploidSampleHaplotypes(forward_probs, recombination_rate,
                                                   haplotype_library, haplotype_library)
