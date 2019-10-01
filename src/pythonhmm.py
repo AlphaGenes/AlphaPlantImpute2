@@ -8,7 +8,6 @@ import numpy as np
 import random
 from .tinyhouse import BasicHMM, InputOutput, Pedigree, HaplotypeLibrary
 
-from .tinyhouse import Utils
 # Create dummy profile decorator if not defined
 try:
     profile
@@ -16,10 +15,6 @@ except NameError as error:
     def profile(dummy):
         """Dummy decorator"""
         return dummy
-
-# Globals
-_n_loci = None
-_seed = None
 
 
 def get_args():
@@ -42,6 +37,7 @@ def get_args():
                                   help='Number of threads to use. Default: 1.')
 
     return InputOutput.parseArgs("pythonhmm", parser)
+
 
 # NOT USED
 def sample_individuals(pedigree, n_individuals):
