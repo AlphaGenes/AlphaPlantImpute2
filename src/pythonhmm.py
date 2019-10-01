@@ -78,7 +78,6 @@ def generate_haplotypes(genotype, maf):
         else:
             raise ValueError('Genotype not in {0,1,2,9}')
 
-
     return p_hap, m_hap
 
 
@@ -175,7 +174,7 @@ def refine_library(individuals, haplotype_library, maf, recombination_rate, erro
             haplotype_library.update_pair(haplotypes[0], haplotypes[1], identifier)
 
 
-# @jit(nopython=True, nogil=True)
+@jit(nopython=True, nogil=True)
 def get_dosages(genotype, haplotype_library, recombination_rate, error):
     """"""
     # Pass missing haplotypes (all 9) to getDiploidPointEstimates(), so that the genotypes are used directly
