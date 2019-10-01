@@ -39,19 +39,6 @@ def get_args():
     return InputOutput.parseArgs("pythonhmm", parser)
 
 
-# NOT USED
-def sample_individuals(pedigree, n_individuals):
-    """Return a randomly sampled number of individuals from a pedigree
-    or equivalently a list of individuals
-    Note: should probably go in Pedigree()"""
-    if n_individuals > len(pedigree):
-        n_individuals = len(pedigree)
-    indices = np.random.choice(len(pedigree), size=n_individuals, replace=False)
-    return [individual
-            for i, individual in enumerate(pedigree)
-            if i in indices]
-
-
 def high_density_individuals(pedigree):
     """Return a list of high density individuals in a pedigree
     Note: should probably go in Pedigree()"""
