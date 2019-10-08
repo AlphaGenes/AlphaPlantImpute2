@@ -6,7 +6,16 @@ from itertools import repeat
 from numba import jit
 import numpy as np
 import random
+from pkg_resources import get_distribution, DistributionNotFound
 from .tinyhouse import BasicHMM, InputOutput, Pedigree, HaplotypeLibrary
+
+
+try:
+    __version__ = get_distribution('pythonhmm').version
+except DistributionNotFound:
+    # Package not installed
+    pass
+
 
 # Create dummy profile decorator if not defined
 try:
@@ -250,6 +259,9 @@ def set_seed(args):
 @profile
 def main():
     """Main execution code"""
+
+#    __version__ = get_distribution(__name__).version
+    print(f'PythonHMM version: {__version__}')
 
     args = getargs()
 
