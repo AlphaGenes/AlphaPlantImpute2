@@ -1,6 +1,6 @@
 """Wrapper for pythonhmm"""
 
-from src import pythonhmm
+from pythonhmm import pythonhmm
 
 def main():
     pythonhmm.main()
