@@ -1,9 +1,12 @@
 *.pyo
 *.pyc
-dist
+dist/
 bin
 __pycache__/
 *.py[cod]
 *.DS_Store
+.eggs/
 *.egg-info/
 .ipynb_checkpoints/
+.vscode/
+build/
