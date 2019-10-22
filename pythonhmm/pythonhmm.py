@@ -157,17 +157,15 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
     genotypes = [individual.genotypes for individual in individuals]
     identifiers = [individual.idx for individual in individuals]
 
-    # Loop
+    # Loop over iterations
     for iteration in range(args.nrounds):
         print('  Iteration', iteration)
-
-        # Choose random sample of haplotypes for each iteration
-        sample = haplotype_library.sample(args.nhaplotypes) # sample is a HaplotypeLibrary()
-
-        # Generator of haplotype libraries for ThreadPoolExecutor.map()
+    
+        # Generator of subsampled haplotype libraries for ThreadPoolExecutor.map()
         # each subsequent library has the corresponding individual's haplotypes masked out
-        haplotype_libraries = (sample.masked(individual.idx) for individual in individuals)
-
+        haplotype_libraries = (haplotype_library.exclude_identifiers_and_sample(individual.idx, args.nhaplotypes) 
+                              for individual in individuals)
+    
         # Sample haplotypes for all individuals in the library
         if args.maxthreads == 1:
             # Single threaded
@@ -219,7 +217,7 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
         print('  Iteration', iteration)
 
         # Sample the haplotype library for each iteration
-        haplotype_library_sample = haplotype_library.sample(args.nhaplotypes)._haplotypes  # UGLY, have a return_library=False option?
+        haplotype_library_sample = haplotype_library.sample(args.nhaplotypes)
 
         # Get dosages for all individuals
         if args.maxthreads == 1:
