@@ -2,10 +2,10 @@
 
 import argparse
 import concurrent.futures
-from itertools import repeat
-from numba import jit
-import numpy as np
 import random
+from itertools import repeat
+import numpy as np
+from numba import jit
 from pkg_resources import get_distribution, DistributionNotFound
 from .tinyhouse import BasicHMM, InputOutput, Pedigree, HaplotypeLibrary
 
@@ -14,7 +14,7 @@ try:
     __version__ = get_distribution('pythonhmm').version
 except DistributionNotFound:
     # Package not installed
-    pass
+    __version__ = None
 
 
 # Create dummy profile decorator if not defined
@@ -90,9 +90,10 @@ def generate_haplotypes(genotype, maf):
     return p_hap, m_hap
 
 
-def create_haplotype_library(individuals, maf):  # can/should this be a member of HaplotypeLibrary() or pedigree()?
+def create_haplotype_library(individuals, maf):
     """Create a haplotype library from list of individuals
-    The population's minor allele frequency (maf) is used to randomly create alleles at missing loci"""
+    The population's minor allele frequency (maf) is used to
+    randomly create alleles at missing loci"""
 
     n_loci = len(maf)
     haplotype_library = HaplotypeLibrary.HaplotypeLibrary(n_loci=n_loci)
@@ -106,20 +107,22 @@ def create_haplotype_library(individuals, maf):  # can/should this be a member o
 
 
 @jit(nopython=True)
-def correct_haplotypes(paternal_hap, maternal_hap, true_genotype, maf):
+def correct_haplotypes(paternal_haplotype, maternal_haplotype, true_genotype, maf):
     """Correct paternal and maternal haplotype pair so that they match the true genotype"""
 
     # Mask to select just the mismatched loci (ignoring missing genotypes)
-    mask = ((paternal_hap + maternal_hap) - true_genotype) != 0
-    mask &= true_genotype != 9                   # ignore missing genotypes (& is bitwise and)
-    assert(np.sum(true_genotype[mask]==9) == 0)  # double check there are no missing genotypes - remove in production code
+    mask = ((paternal_haplotype + maternal_haplotype) - true_genotype) != 0
+    # Ignore missing genotypes (& is bitwise and)
+    mask &= (true_genotype != 9)
+    # Double check there are no missing genotypes
+    assert np.sum(true_genotype[mask] == 9) == 0
 
     # Generate (matching) haplotypes at just these loci
-    p, m = generate_haplotypes(true_genotype[mask], maf[mask])
+    paternal, maternal = generate_haplotypes(true_genotype[mask], maf[mask])
 
     # Update
-    paternal_hap[mask] = p
-    maternal_hap[mask] = m
+    paternal_haplotype[mask] = paternal
+    maternal_haplotype[mask] = maternal
 
 
 @jit(nopython=True, nogil=True)
@@ -128,15 +131,14 @@ def sample_haplotype_pair(genotype, haplotype_library, recombination_rate, error
     against a haplotype library 'haplotype_library'
     Note: the supplied haplotype_library should not contain a copy of the individual's haplotypes"""
 
-    # Pass missing haplotypes (all 9) to getDiploidPointEstimates(), so that the genotypes are used directly
     n_loci = len(genotype)
-    haplotypes = np.full((2, n_loci), 9, dtype=np.int8)
-    
-    n_pat = haplotype_library.shape[0]
-    n_mat = haplotype_library.shape[0]
+    haplotypes = np.empty((2, n_loci), dtype=np.int8)
+
+    n_pat = n_mat = haplotype_library.shape[0]
     point_estimate = np.empty((n_loci, n_pat, n_mat), dtype=np.float32)
 
-    BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library, error, point_estimate)
+    BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library,
+                                           error, point_estimate)
     forward_probs = BasicHMM.diploidForward(point_estimate, recombination_rate)
     haplotypes = BasicHMM.diploidSampleHaplotypes(forward_probs, recombination_rate,
                                                   haplotype_library, haplotype_library)
@@ -185,15 +187,13 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
 @jit(nopython=True, nogil=True)
 def get_dosages(genotype, haplotype_library, recombination_rate, error):
     """Get dosages for an individual's genotype"""
-    
+
     n_loci = len(genotype)
-    nPat = haplotype_library.shape[0]
-    nMat = haplotype_library.shape[0]
+    n_pat = n_mat = haplotype_library.shape[0]
+    point_estimate = np.ones((n_loci, n_pat, n_mat), dtype=np.float32)
 
-    # Get dosages - should this be a helper function - its like diploidHMM(..., callingMethod='dosages')
-    pointEst = np.full((n_loci, nPat, nMat), 1, dtype = np.float32)
-
-    point_estimate = BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library, error, pointEst)
+    point_estimate = BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library,
+                                                            error, point_estimate)
     total_probs = BasicHMM.diploidForwardBackward(point_estimate, recombination_rate)
     dosages = BasicHMM.getDiploidDosages(total_probs, haplotype_library, haplotype_library)
 
@@ -222,8 +222,6 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
         haplotype_library_sample = haplotype_library.sample(args.nhaplotypes)._haplotypes  # UGLY, have a return_library=False option?
 
         # Get dosages for all individuals
-        #   Does it make sense to impute high density individuals? Yes to fill in missingness, but not if it introduces additional errors
-        #   Handle LD and HD separately?
         if args.maxthreads == 1:
             # Single threaded
             results = map(get_dosages, genotypes, repeat(haplotype_library_sample),
@@ -260,7 +258,6 @@ def set_seed(args):
 def main():
     """Main execution code"""
 
-#    __version__ = get_distribution(__name__).version
     print(f'PythonHMM version: {__version__}')
 
     args = getargs()
