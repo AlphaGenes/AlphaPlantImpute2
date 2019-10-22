@@ -160,12 +160,12 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
     # Loop over iterations
     for iteration in range(args.nrounds):
         print('  Iteration', iteration)
-    
+
         # Generator of subsampled haplotype libraries for ThreadPoolExecutor.map()
         # each subsequent library has the corresponding individual's haplotypes masked out
-        haplotype_libraries = (haplotype_library.exclude_identifiers_and_sample(individual.idx, args.nhaplotypes) 
-                              for individual in individuals)
-    
+        haplotype_libraries = (haplotype_library.exclude_identifiers_and_sample(individual.idx, args.nhaplotypes)
+                               for individual in individuals)
+
         # Sample haplotypes for all individuals in the library
         if args.maxthreads == 1:
             # Single threaded
@@ -252,15 +252,35 @@ def set_seed(args):
         random.seed(args.seed)
 
 
+def print_boilerplate():
+    """Print software name, version etc."""
+    name = 'AlphaPlantImpute2'  # get from __name__?
+    description = 'Software for phasing and imputing genotypes in plant populations'
+    author = 'AlphaGenes Group (http://alphagenes.roslin.ed.ac.uk)'
+    version = f'Version: {__version__}'
+    box_text = ['', name, '', version, '']
+    width = 80
+    print('*' * width)
+    for line in box_text:
+        print(f'*{line:^{width-2}}*')
+    print('*' * width)
+    extra_text = ['', description, '', author]
+    for line in extra_text:
+        print(f'{line:<{width}}')
+    print('-' * width)
+    print(' ' * width)
+
+
 @profile
 def main():
     """Main execution code"""
 
-    print(f'PythonHMM version: {__version__}')
+    print_boilerplate()
 
+    # Handle command-line arguments
     args = getargs()
 
-    # Random seed
+    # Set random seed
     set_seed(args)
 
     # Read data
