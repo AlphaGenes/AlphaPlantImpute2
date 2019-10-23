@@ -139,7 +139,7 @@ def sample_haplotype_pair(genotype, haplotype_library, recombination_rate, error
 
     BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library,
                                            error, point_estimate)
-    forward_probs = BasicHMM.diploidForward(point_estimate, recombination_rate)
+    forward_probs = BasicHMM.diploid_forward(point_estimate, recombination_rate, in_place = True)
     haplotypes = BasicHMM.diploidSampleHaplotypes(forward_probs, recombination_rate,
                                                   haplotype_library, haplotype_library)
 
@@ -190,7 +190,7 @@ def get_dosages(genotype, haplotype_library, recombination_rate, error):
     n_pat = n_mat = haplotype_library.shape[0]
     point_estimate = np.ones((n_loci, n_pat, n_mat), dtype=np.float32)
 
-    point_estimate = BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library,
+    BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library,
                                                             error, point_estimate)
     total_probs = BasicHMM.diploidForwardBackward(point_estimate, recombination_rate)
     dosages = BasicHMM.getDiploidDosages(total_probs, haplotype_library, haplotype_library)
