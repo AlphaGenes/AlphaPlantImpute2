@@ -99,8 +99,12 @@ def create_haplotype_library(individuals, maf):
     haplotype_library = HaplotypeLibrary.HaplotypeLibrary(n_loci=n_loci)
     for individual in individuals:
         paternal_haplotype, maternal_haplotype = generate_haplotypes(individual.genotypes, maf)
-        haplotype_library.append(paternal_haplotype, identifier=individual.idx)
-        haplotype_library.append(maternal_haplotype, identifier=individual.idx)
+        if individual.inbred:
+            # Only append one haplotype for an inbred/double haploid individual
+            haplotype_library.append(paternal_haplotype, identifier=individual.idx)
+        else:
+            haplotype_library.append(paternal_haplotype, identifier=individual.idx)
+            haplotype_library.append(maternal_haplotype, identifier=individual.idx)
 
     haplotype_library.freeze()
     return haplotype_library
@@ -162,7 +166,7 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
         print('  Iteration', iteration)
 
         # Generator of subsampled haplotype libraries for ThreadPoolExecutor.map()
-        # each subsequent library has the corresponding individual's haplotypes masked out
+        # each library in the generator has the corresponding individual's haplotypes masked out
         haplotype_libraries = (haplotype_library.exclude_identifiers_and_sample(individual.idx, args.nhaplotypes)
                                for individual in individuals)
 
@@ -179,7 +183,7 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
 
         # Update library
         for haplotypes, identifier in zip(results, identifiers):
-            haplotype_library.update_pair(haplotypes[0], haplotypes[1], identifier)
+            haplotype_library.update_pair(haplotypes[0], haplotypes[1], identifier)  # different for DH
 
 
 @jit(nopython=True, nogil=True)
