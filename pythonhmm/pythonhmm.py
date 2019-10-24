@@ -274,6 +274,18 @@ def print_boilerplate():
     print('-' * width)
     print(' ' * width)
 
+def handle_inbreds(pedigree):
+    """Handle any inbred/double haploid individuals: set any heterozygous loci to missing
+    and warn"""
+    inbred_individuals = [individual for individual in pedigree if individual.inbred]
+    threshold = 0.0  # fraction of heterozygous loci
+    for individual in inbred_individuals:
+        heterozygous_loci = (individual.genotypes == 1)
+        heterozygosity = np.mean(heterozygous_loci)
+        if heterozygosity > threshold:
+            print(f"Inbred individual '{individual.idx}' has heterozygosity of {heterozygosity}; setting heterozygous loci to missing")
+            individual.genotypes[heterozygous_loci] = 9
+
 
 @profile
 def main():
@@ -291,6 +303,9 @@ def main():
     pedigree = Pedigree.Pedigree()
     InputOutput.readInPedigreeFromInputs(pedigree, args, genotypes=True, haps=False, reads=False)
     n_loci = pedigree.nLoci
+
+    # Handle any inbred/double haploid individuals
+    handle_inbreds(pedigree)
 
     # Calculate MAF and determine high density individuals
     pedigree.setMaf()
