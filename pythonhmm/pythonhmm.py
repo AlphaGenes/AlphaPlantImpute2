@@ -129,25 +129,64 @@ def correct_haplotypes(paternal_haplotype, maternal_haplotype, true_genotype, ma
     maternal_haplotype[mask] = maternal
 
 
-@jit(nopython=True, nogil=True)
-def sample_haplotype_pair(genotype, haplotype_library, recombination_rate, error, maf):
-    """Sample a pair of haplotypes for an individual with genotype 'genotypes'
-    against a haplotype library 'haplotype_library'
-    Note: the supplied haplotype_library should not contain a copy of the individual's haplotypes"""
+def correct_haplotypes_inbred(haplotype, true_haplotype, maf):
+    
+    true_genotype = np.full_like(true_haplotype, 9, dtype=np.int8)
+    non_missing_loci = (true_haplotype != 9)
+    true_genotype[non_missing_loci] = true_haplotype[non_missing_loci] * 2
 
-    n_loci = len(genotype)
+    correct_haplotypes(haplotype, haplotype, true_genotype)
+    
+
+
+@jit(nopython=True, nogil=True)
+def sample_haplotype_inbred(true_haplotype, true_genotype, haplotype_library, recombination_rate, error, maf):
+    """Sample a haplotype for an inbred/double haploid individual using haplotype library 'haplotype_library'
+    Returns:
+      A single haplotype
+    Note: the supplied haplotype_library should NOT contain a copy of the individual's haplotypes"""
+
+    # This block should be (mostly) in BasicHMM through haploidHMM() interface
+    point_estimates = BasicHMM.getHaploidPointEstimates(true_haplotype, haplotype_library, error) # cf. getDiploidPointEstimates_GENO
+    forward_probs = BasicHMM.haploidForward(point_estimates, recombination_rate)
+    haplotype = BasicHMM.haploidSampleHaplotype(forward_probs, haplotype_library, recombination_rate)
+
+    correct_haplotypes(haplotype, haplotype, true_genotype, maf)
+    return haplotype
+
+
+@jit(nopython=True, nogil=True)
+def sample_haplotypes_outbred(true_genotype, haplotype_library, recombination_rate, error, maf):
+    # This block should be (mostly) in BasicHMM through haploidHMM() interface
+    n_loci = len(true_genotype)
     haplotypes = np.empty((2, n_loci), dtype=np.int8)
 
     n_pat = n_mat = haplotype_library.shape[0]
     point_estimate = np.empty((n_loci, n_pat, n_mat), dtype=np.float32)
-
-    BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library,
+    BasicHMM.getDiploidPointEstimates_geno(true_genotype, haplotype_library, haplotype_library,
                                            error, point_estimate)
     forward_probs = BasicHMM.diploidForward(point_estimate, recombination_rate)
     haplotypes = BasicHMM.diploidSampleHaplotypes(forward_probs, recombination_rate,
                                                   haplotype_library, haplotype_library)
+    correct_haplotypes(haplotypes[0], haplotypes[1], true_genotype, maf)
+    return haplotypes
 
-    correct_haplotypes(haplotypes[0], haplotypes[1], genotype, maf)
+
+def sample_haplotypes(individual, haplotype_library, recombination_rate, error, maf):
+    """Sample haplotypes for an individual using haplotype library 'haplotype_library'
+    Outbreds return a pair of haplotypes as a 2d array of shape (2, n_loci)
+    Inbreds return a single haplotype as a 1d array of shape (n_loci,)
+    Note: the supplied haplotype_library should not contain a copy of the individual's haplotypes"""
+
+    n_loci = haplotype_library.shape[1]
+
+    if individual.inbred:
+        haplotype = individual.haplotypes
+        genotype = individual.genotypes
+        haplotypes = sample_haplotype_inbred(haplotype, genotype, haplotype_library, recombination_rate, error, maf)
+    else:
+        genotype = individual.genotypes
+        haplotypes = sample_haplotypes_outbred(genotype, haplotype_library, recombination_rate, error, maf)
 
     return haplotypes
 
@@ -156,10 +195,6 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
     """Refine haplotype library"""
 
     print(f'Refining haplotype library, {args.nrounds} iterations')
-
-    # List of genotypes and identifiers to iterate over
-    genotypes = [individual.genotypes for individual in individuals]
-    identifiers = [individual.idx for individual in individuals]
 
     # Loop over iterations
     for iteration in range(args.nrounds):
@@ -173,17 +208,18 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
         # Sample haplotypes for all individuals in the library
         if args.maxthreads == 1:
             # Single threaded
-            results = map(sample_haplotype_pair, genotypes, haplotype_libraries,
+            results = map(sample_haplotypes, individuals, haplotype_libraries,
                           repeat(recombination_rate), repeat(error), repeat(maf))
         else:
             # Multithreaded
             with concurrent.futures.ThreadPoolExecutor(max_workers=args.maxthreads) as executor:
-                results = executor.map(sample_haplotype_pair, genotypes, haplotype_libraries,
+                results = executor.map(sample_haplotypes, individuals, haplotype_libraries,
                                        repeat(recombination_rate), repeat(error), repeat(maf))
 
         # Update library
+        identifiers = [individual.idx for individual in individuals]
         for haplotypes, identifier in zip(results, identifiers):
-            haplotype_library.update_pair(haplotypes[0], haplotypes[1], identifier)  # different for DH
+            haplotype_library.update(haplotypes, identifier)
 
 
 @jit(nopython=True, nogil=True)
@@ -274,17 +310,26 @@ def print_boilerplate():
     print('-' * width)
     print(' ' * width)
 
+
 def handle_inbreds(pedigree):
     """Handle any inbred/double haploid individuals: set any heterozygous loci to missing
     and warn"""
     inbred_individuals = [individual for individual in pedigree if individual.inbred]
     threshold = 0.0  # fraction of heterozygous loci
+    # Set heterozygous loci to missing
     for individual in inbred_individuals:
         heterozygous_loci = (individual.genotypes == 1)
         heterozygosity = np.mean(heterozygous_loci)
         if heterozygosity > threshold:
             print(f"Inbred individual '{individual.idx}' has heterozygosity of {heterozygosity}; setting heterozygous loci to missing")
             individual.genotypes[heterozygous_loci] = 9
+    # Create haplotype from genotype
+    for individual in inbred_individuals:
+        n_loci = len(individual.genotypes)
+        haplotype = np.full(n_loci, 9, dtype=np.int8)
+        non_missing_loci = (individual.genotypes != 9)
+        haplotype[non_missing_loci] = individual.genotypes[non_missing_loci] // 2
+        individual.haplotypes = haplotype
 
 
 @profile
