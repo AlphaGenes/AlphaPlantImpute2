@@ -307,18 +307,18 @@ def main():
     # Handle any inbred/double haploid individuals
     handle_inbreds(pedigree)
 
-    # Calculate MAF and determine high density individuals
+    # Calculate minor allele frequency and determine high density individuals
     pedigree.setMaf()
     pedigree.high_density_threshold = args.hdthreshold
     pedigree.set_high_density()
+    individuals = high_density_individuals(pedigree)
+    print('# HD individuals', len(individuals))
 
     # Various parameters
     error = np.full(n_loci, 0.01, dtype=np.float32)
     recombination_rate = np.full(n_loci, 1/n_loci, dtype=np.float32)
 
     # Library
-    individuals = high_density_individuals(pedigree)
-    print('# HD individuals', len(individuals))
     haplotype_library = create_haplotype_library(individuals, pedigree.maf)
     refine_library(args, individuals, haplotype_library, pedigree.maf, recombination_rate, error)
 
