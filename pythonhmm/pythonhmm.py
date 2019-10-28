@@ -224,11 +224,11 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
 
 @jit(nopython=True, nogil=True)
 def get_dosages_inbred(haplotype, haplotype_library, recombination_rate, error):
-    """Get dosages for an inbred individual"""
+    """Get dosages for an inbred individual
+    Note: these are haploid dosages"""
     point_estimates = BasicHMM.getHaploidPointEstimates(haplotype, haplotype_library, error) # cf. getDiploidPointEstimates_GENO
     total_probs = BasicHMM.haploidForwardBackward(point_estimates, recombination_rate)
-    # Output from getHaploidDosages() needs to be multiplied by 2 to get genotype dosage
-    dosages = 2*BasicHMM.getHaploidDosages(total_probs, haplotype_library)
+    dosages = BasicHMM.getHaploidDosages(total_probs, haplotype_library)
     return dosages
 
 
@@ -295,7 +295,14 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
     # Normalize dosages and generate genotypes
     for individual in pedigree:
         individual.dosages /= n_iterations
-        individual.genotypes = np.int8(np.round(individual.dosages))
+        if individual.inbred:
+            # Dosage for inbred/double haploids is for a haplotype
+            #   round dosage and then multiply by 2 to get genotype
+            #   this prevents inbred/double haploids having loci imputed as heterozygous
+            individual.genotypes = 2*np.int8(np.round(individual.dosages))
+            individual.dosages *= 2
+        else:
+            individual.genotypes = np.int8(np.round(individual.dosages))
 
 
 def set_seed(args):
