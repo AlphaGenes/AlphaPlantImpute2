@@ -223,22 +223,39 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
 
 
 @jit(nopython=True, nogil=True)
-def get_dosages(genotype, haplotype_library, recombination_rate, error):
-    """Get dosages for an individual's genotype"""
-
-    n_loci = len(genotype)
-    n_pat = n_mat = haplotype_library.shape[0]
-    point_estimate = np.ones((n_loci, n_pat, n_mat), dtype=np.float32)
-
-    point_estimate = BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library,
-                                                            error, point_estimate)
-    total_probs = BasicHMM.diploidForwardBackward(point_estimate, recombination_rate)
-    dosages = BasicHMM.getDiploidDosages(total_probs, haplotype_library, haplotype_library)
-
+def get_dosages_inbred(haplotype, haplotype_library, recombination_rate, error):
+    """Get dosages for an inbred individual"""
+    point_estimates = BasicHMM.getHaploidPointEstimates(haplotype, haplotype_library, error) # cf. getDiploidPointEstimates_GENO
+    total_probs = BasicHMM.haploidForwardBackward(point_estimates, recombination_rate)
+    # Output from getHaploidDosages() needs to be multiplied by 2 to get genotype dosage
+    dosages = 2*BasicHMM.getHaploidDosages(total_probs, haplotype_library)
     return dosages
 
 
-def impute_individuals(args, pedigree, haplotype_library, recombination_rate, error): # haplotype_library_full -> haplotype_library
+@jit(nopython=True, nogil=True)
+def get_dosages_outbred(genotype, haplotype_library, recombination_rate, error):
+    """Get dosages for an outbred individual"""
+    n_loci = len(genotype)
+    n_pat = n_mat = haplotype_library.shape[0]
+    point_estimate = np.ones((n_loci, n_pat, n_mat), dtype=np.float32)
+    BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library,
+                                           error, point_estimate)
+    total_probs = BasicHMM.diploidForwardBackward(point_estimate, recombination_rate)
+    dosages = BasicHMM.getDiploidDosages(total_probs, haplotype_library, haplotype_library)
+    return dosages
+
+
+def get_dosages(individual, haplotype_library, recombination_rate, error):
+    """Get dosages for an individual"""
+    if individual.inbred:
+        haplotype = individual.haplotypes
+        return get_dosages_inbred(haplotype, haplotype_library, recombination_rate, error)
+    else:
+        genotype = individual.genotypes
+        return get_dosages_outbred(genotype, haplotype_library, recombination_rate, error)
+
+
+def impute_individuals(args, pedigree, haplotype_library, recombination_rate, error):
     """Impute all individuals in the pedigree"""
 
     n_iterations = 5
@@ -246,7 +263,8 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
     print(f'Imputing individuals, {n_iterations} iterations')
 
     # List of genotypes to iterate over
-    genotypes = [individual.genotypes for individual in pedigree]
+ #   genotypes = [individual.genotypes for individual in pedigree]
+    individuals = [individual for individual in pedigree]
 
     # Set all dosages to zero, so they can be incrementally added to
     for individual in pedigree:
@@ -257,17 +275,17 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
         print('  Iteration', iteration)
 
         # Sample the haplotype library for each iteration
-        haplotype_library_sample = haplotype_library.sample(args.nhaplotypes)
+        haplotype_library_sample = haplotype_library.sample(args.nhaplotypes) # should this include the individual being imputed?
 
         # Get dosages for all individuals
         if args.maxthreads == 1:
             # Single threaded
-            results = map(get_dosages, genotypes, repeat(haplotype_library_sample),
+            results = map(get_dosages, individuals, repeat(haplotype_library_sample),
                           repeat(recombination_rate), repeat(error))
         else:
             # Multithreaded
             with concurrent.futures.ThreadPoolExecutor(max_workers=args.maxthreads) as executor:
-                results = executor.map(get_dosages, genotypes, repeat(haplotype_library_sample),
+                results = executor.map(get_dosages, individuals, repeat(haplotype_library_sample),
                                        repeat(recombination_rate), repeat(error))
 
         # Update dosages from results
