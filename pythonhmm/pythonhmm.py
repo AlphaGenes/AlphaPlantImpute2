@@ -129,15 +129,6 @@ def correct_haplotypes(paternal_haplotype, maternal_haplotype, true_genotype, ma
     maternal_haplotype[mask] = maternal
 
 
-def correct_haplotypes_inbred(haplotype, true_haplotype, maf):
-    
-    true_genotype = np.full_like(true_haplotype, 9, dtype=np.int8)
-    non_missing_loci = (true_haplotype != 9)
-    true_genotype[non_missing_loci] = true_haplotype[non_missing_loci] * 2
-
-    correct_haplotypes(haplotype, haplotype, true_genotype, maf)
-    
-
 @jit(nopython=True, nogil=True)
 def sample_haplotype_inbred(true_haplotype, true_genotype, haplotype_library, recombination_rate, error, maf):
     """Sample a haplotype for an inbred/double haploid individual using haplotype library 'haplotype_library'
@@ -156,6 +147,11 @@ def sample_haplotype_inbred(true_haplotype, true_genotype, haplotype_library, re
 
 @jit(nopython=True, nogil=True)
 def sample_haplotypes_outbred(true_genotype, haplotype_library, recombination_rate, error, maf):
+    """Sample a haplotype for an (outbred) individual using haplotype library 'haplotype_library'
+    Returns:
+      A a pair of haplotypes
+    Note: the supplied haplotype_library should NOT contain a copy of the individual's haplotypes"""
+
     # This block should be (mostly) in BasicHMM through haploidHMM() interface
     n_loci = len(true_genotype)
     haplotypes = np.empty((2, n_loci), dtype=np.int8)
@@ -176,8 +172,6 @@ def sample_haplotypes(individual, haplotype_library, recombination_rate, error, 
     Outbreds return a pair of haplotypes as a 2d array of shape (2, n_loci)
     Inbreds return a single haplotype as a 1d array of shape (n_loci,)
     Note: the supplied haplotype_library should not contain a copy of the individual's haplotypes"""
-
-    n_loci = haplotype_library.shape[1]
 
     if individual.inbred:
         haplotype = individual.haplotypes
