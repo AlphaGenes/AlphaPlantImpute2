@@ -7,7 +7,7 @@ from itertools import repeat
 import numpy as np
 from numba import jit
 from pkg_resources import get_distribution, DistributionNotFound
-from .tinyhouse import BasicHMM, InputOutput, Pedigree, HaplotypeLibrary
+from . tinyhouse import HaploidHMM, DiploidHMM, InputOutput, Pedigree, HaplotypeLibrary
 
 
 try:
@@ -137,9 +137,9 @@ def sample_haplotype_inbred(true_haplotype, true_genotype, haplotype_library, re
     Note: the supplied haplotype_library should NOT contain a copy of the individual's haplotypes"""
 
     # This block should be (mostly) in BasicHMM through haploidHMM() interface
-    point_estimates = BasicHMM.getHaploidPointEstimates(true_haplotype, haplotype_library, error) # cf. getDiploidPointEstimates_GENO
-    forward_probs = BasicHMM.haploidForward(point_estimates, recombination_rate)
-    haplotype = BasicHMM.haploidSampleHaplotype(forward_probs, haplotype_library, recombination_rate)
+    point_estimates = HaploidHMM.getHaploidPointEstimates(true_haplotype, haplotype_library, error) # cf. getDiploidPointEstimates_GENO
+    forward_probs = HaploidHMM.haploidForward(point_estimates, recombination_rate)
+    haplotype = HaploidHMM.haploidSampleHaplotype(forward_probs, haplotype_library, recombination_rate)
 
     correct_haplotypes(haplotype, haplotype, true_genotype, maf)
     return haplotype
@@ -158,11 +158,11 @@ def sample_haplotypes_outbred(true_genotype, haplotype_library, recombination_ra
 
     n_pat = n_mat = haplotype_library.shape[0]
     point_estimate = np.empty((n_loci, n_pat, n_mat), dtype=np.float32)
-    BasicHMM.getDiploidPointEstimates_geno(true_genotype, haplotype_library, haplotype_library,
-                                           error, point_estimate)
-    forward_probs = BasicHMM.diploid_forward(point_estimate, recombination_rate, in_place=True)
-    haplotypes = BasicHMM.diploidSampleHaplotypes(forward_probs, recombination_rate,
-                                                  haplotype_library, haplotype_library)
+    DiploidHMM.getDiploidPointEstimates_geno(true_genotype, haplotype_library, haplotype_library,
+                                             error, point_estimate)
+    forward_probs = DiploidHMM.diploid_forward(point_estimate, recombination_rate, in_place=True)
+    haplotypes = DiploidHMM.diploidSampleHaplotypes(forward_probs, recombination_rate,
+                                                    haplotype_library, haplotype_library)
     correct_haplotypes(haplotypes[0], haplotypes[1], true_genotype, maf)
     return haplotypes
 
@@ -219,9 +219,9 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
 def get_dosages_inbred(haplotype, haplotype_library, recombination_rate, error):
     """Get dosages for an inbred individual
     Note: these are haploid dosages"""
-    point_estimates = BasicHMM.getHaploidPointEstimates(haplotype, haplotype_library, error) # cf. getDiploidPointEstimates_GENO
-    total_probs = BasicHMM.haploidForwardBackward(point_estimates, recombination_rate)
-    dosages = BasicHMM.getHaploidDosages(total_probs, haplotype_library)
+    point_estimates = HaploidHMM.getHaploidPointEstimates(haplotype, haplotype_library, error) # cf. getDiploidPointEstimates_GENO
+    total_probs = HaploidHMM.haploidForwardBackward(point_estimates, recombination_rate)
+    dosages = HaploidHMM.getHaploidDosages(total_probs, haplotype_library)
     return dosages
 
 
@@ -232,10 +232,10 @@ def get_dosages_outbred(genotype, haplotype_library, recombination_rate, error):
     n_pat = n_mat = haplotype_library.shape[0]
     point_estimate = np.ones((n_loci, n_pat, n_mat), dtype=np.float32)
 
-    BasicHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library,
-                                           error, point_estimate)
-    total_probs = BasicHMM.diploidForwardBackward(point_estimate, recombination_rate)
-    dosages = BasicHMM.getDiploidDosages(total_probs, haplotype_library, haplotype_library)
+    DiploidHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library,
+                                             error, point_estimate)
+    total_probs = DiploidHMM.diploidForwardBackward(point_estimate, recombination_rate)
+    dosages = DiploidHMM.getDiploidDosages(total_probs, haplotype_library, haplotype_library)
     return dosages
 
 
