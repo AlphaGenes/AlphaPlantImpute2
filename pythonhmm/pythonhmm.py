@@ -165,7 +165,7 @@ def sample_haplotypes_outbred(true_genotype, haplotype_library, recombination_ra
     point_estimate = np.empty((n_loci, n_pat, n_mat), dtype=np.float32)
     BasicHMM.getDiploidPointEstimates_geno(true_genotype, haplotype_library, haplotype_library,
                                            error, point_estimate)
-    forward_probs = BasicHMM.diploidForward(point_estimate, recombination_rate)
+    forward_probs = BasicHMM.diploid_forward(point_estimate, recombination_rate)
     haplotypes = BasicHMM.diploidSampleHaplotypes(forward_probs, recombination_rate,
                                                   haplotype_library, haplotype_library)
     correct_haplotypes(haplotypes[0], haplotypes[1], true_genotype, maf)
