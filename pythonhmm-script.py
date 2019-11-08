@@ -1,6 +1,6 @@
 """Wrapper for pythonhmm"""
 
-from pythonhmm import alphaplantimpute2
+from alphaplantimpute2 import alphaplantimpute2
 
 def main():
     alphaplantimpute2.main()

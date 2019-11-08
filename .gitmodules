@@ -1,3 +1,3 @@
 [submodule "src/tinyhouse"]
-	path = pythonhmm/tinyhouse
+	path = alphaplantimpute2/tinyhouse
 	url = https://bitbucket.org/hickeyjohnteam/tinyhouse.git
