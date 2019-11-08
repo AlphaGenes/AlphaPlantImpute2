@@ -33,19 +33,19 @@ def getargs():
     core_parser.add_argument('-out', required=True, type=str, help='The output file prefix.')
     InputOutput.addInputFileParser(parser)
 
-    pythonhmm_parser = parser.add_argument_group('PythonHMM Arguments')
-    pythonhmm_parser.add_argument('-hdthreshold', default=0.9, required=False, type=float,
-                                  help='Threshold for determining which haplotypes to include in the haplotype library.')
-    pythonhmm_parser.add_argument('-nsamples', default=10, required=False, type=int,
-                                  help="Number of samples to use with the 'sampler' method.")
-    pythonhmm_parser.add_argument('-nhaplotypes', default=200, required=False, type=int,
-                                  help="Number of haplotypes to use in the haplotype library.")
-    pythonhmm_parser.add_argument('-nrounds', default=20, required=False, type=int,
-                                  help="Number of rounds of HMM sampling.")
+    pythonhmm_parser = parser.add_argument_group('AlphaPlantImpute2 arguments.')
+    pythonhmm_parser.add_argument('-hd_threshold', default=0.9, required=False, type=float,
+                                  help='Percentage of non-missing markers to classify an individual as high-density. Only high-density individuals are included in the haplotype library. Default: 0.9.')
+    pythonhmm_parser.add_argument('-n_haplotypes', default=100, required=False, type=int,
+                                  help='Number of haplotypes to sample from the haplotype library in each HMM round. Default: 100.')
+    pythonhmm_parser.add_argument('-n_sample_rounds', default=10, required=False, type=int,
+                                  help='Number of rounds of HMM sampling. Default: 10.')
+    pythonhmm_parser.add_argument('-n_impute_rounds', default=5, required=False, type=int,
+                                  help='Number of rounds for imputating individuals. Default: 5.')
     pythonhmm_parser.add_argument('-maxthreads', default=1, required=False, type=int,
-                                  help='Number of threads to use. Default: 1.')
+                                  help='Number of threads to use for running the analysis. Default: 1.')
 
-    return InputOutput.parseArgs("pythonhmm", parser)
+    return InputOutput.parseArgs('alphaplantimpute2', parser)
 
 
 def high_density_individuals(pedigree):
@@ -187,15 +187,15 @@ def sample_haplotypes(individual, haplotype_library, recombination_rate, error, 
 def refine_library(args, individuals, haplotype_library, maf, recombination_rate, error):
     """Refine haplotype library"""
 
-    print(f'Refining haplotype library, {args.nrounds} iterations')
+    print(f'Refining haplotype library, {args.n_sample_rounds} iterations')
 
     # Loop over iterations
-    for iteration in range(args.nrounds):
+    for iteration in range(args.n_sample_rounds):
         print('  Iteration', iteration)
 
         # Generator of subsampled haplotype libraries for ThreadPoolExecutor.map()
         # each library in the generator has the corresponding individual's haplotypes masked out
-        haplotype_libraries = (haplotype_library.exclude_identifiers_and_sample(individual.idx, args.nhaplotypes)
+        haplotype_libraries = (haplotype_library.exclude_identifiers_and_sample(individual.idx, args.n_haplotypes)
                                for individual in individuals)
 
         # Sample haplotypes for all individuals in the library
@@ -252,24 +252,22 @@ def get_dosages(individual, haplotype_library, recombination_rate, error):
 def impute_individuals(args, pedigree, haplotype_library, recombination_rate, error):
     """Impute all individuals in the pedigree"""
 
-    n_iterations = 5
     n_loci = pedigree.nLoci
-    print(f'Imputing individuals, {n_iterations} iterations')
+    print(f'Imputing individuals, {args.n_impute_rounds} iterations')
 
-    # List of genotypes to iterate over
- #   genotypes = [individual.genotypes for individual in pedigree]
-    individuals = [individual for individual in pedigree]
+    # Iterate over all individuals in the Pedigree() object
+    individuals = pedigree
 
     # Set all dosages to zero, so they can be incrementally added to
-    for individual in pedigree:
+    for individual in individuals:
         individual.dosages = np.full(n_loci, 0., dtype=np.float32)
 
     # Loop
-    for iteration in range(n_iterations):
+    for iteration in range(args.n_impute_rounds):
         print('  Iteration', iteration)
 
         # Sample the haplotype library for each iteration
-        haplotype_library_sample = haplotype_library.sample(args.nhaplotypes) # should this include the individual being imputed?
+        haplotype_library_sample = haplotype_library.sample(args.n_haplotypes) # should this include the individual being imputed?
 
         # Get dosages for all individuals
         if args.maxthreads == 1:
@@ -283,12 +281,12 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
                                        repeat(recombination_rate), repeat(error))
 
         # Update dosages from results
-        for dosages, individual in zip(results, pedigree):
+        for dosages, individual in zip(results, individuals):
             individual.dosages += dosages
 
     # Normalize dosages and generate genotypes
     for individual in pedigree:
-        individual.dosages /= n_iterations
+        individual.dosages /= args.n_impute_rounds
         if individual.inbred:
             # Dosage for inbred/double haploids is for a haplotype
             #   round dosage and then multiply by 2 to get genotype
@@ -373,7 +371,7 @@ def main():
 
     # Calculate minor allele frequency and determine high density individuals
     pedigree.setMaf()
-    pedigree.high_density_threshold = args.hdthreshold
+    pedigree.high_density_threshold = args.hd_threshold
     pedigree.set_high_density()
     individuals = high_density_individuals(pedigree)
     print('# HD individuals', len(individuals))
