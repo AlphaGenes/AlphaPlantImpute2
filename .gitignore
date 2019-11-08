@@ -1,5 +1,4 @@
-*.pyo
-*.pyc
+*.ipynb
 dist/
 bin
 __pycache__/
@@ -9,4 +8,5 @@ __pycache__/
 *.egg-info/
 .ipynb_checkpoints/
 .vscode/
+.Rhistory
 build/
