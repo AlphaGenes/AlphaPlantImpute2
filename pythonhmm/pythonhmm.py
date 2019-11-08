@@ -29,22 +29,30 @@ except NameError as error:
 def getargs():
     """Get and parse command-line arguments"""
     parser = argparse.ArgumentParser(description='')
-    core_parser = parser.add_argument_group("Core arguments")
-    core_parser.add_argument('-out', required=True, type=str, help='The output file prefix.')
-    InputOutput.addInputFileParser(parser)
 
-    pythonhmm_parser = parser.add_argument_group('AlphaPlantImpute2 arguments.')
+    # Core options
+    core_parser = parser.add_argument_group('Core Options')
+    core_parser.add_argument('-out', required=True, type=str, help='The output file prefix.')
+
+    # Input options
+    input_parser = parser.add_argument_group('Input Options')
+    InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
+
+    # Multithreading options
+    multithread_parser = parser.add_argument_group('Multithreading Options')
+    InputOutput.add_arguments_from_dictionary(multithread_parser, InputOutput.get_multithread_options(), options=['maxthreads','iothreads']) 
+
+    # Algorithm options
+    pythonhmm_parser = parser.add_argument_group('Algorithm Options')
     pythonhmm_parser.add_argument('-hd_threshold', default=0.9, required=False, type=float,
-                                  help='Percentage of non-missing markers to classify an individual as high-density. Only high-density individuals are included in the haplotype library. Default: 0.9.')
+                                  help='Percentage of non-missing markers to classify an individual as high-density. Only high-density individuals make up haplotype library. Default: 0.9.')
     pythonhmm_parser.add_argument('-n_haplotypes', default=100, required=False, type=int,
                                   help='Number of haplotypes to sample from the haplotype library in each HMM round. Default: 100.')
     pythonhmm_parser.add_argument('-n_sample_rounds', default=10, required=False, type=int,
-                                  help='Number of rounds of HMM sampling. Default: 10.')
+                                  help='Number of rounds of library refinement. Default: 10.')
     pythonhmm_parser.add_argument('-n_impute_rounds', default=5, required=False, type=int,
-                                  help='Number of rounds for imputating individuals. Default: 5.')
-    pythonhmm_parser.add_argument('-maxthreads', default=1, required=False, type=int,
-                                  help='Number of threads to use for running the analysis. Default: 1.')
-
+                                  help='Number of rounds of imputation. Default: 5.')
+    
     return InputOutput.parseArgs('alphaplantimpute2', parser)
 
 
