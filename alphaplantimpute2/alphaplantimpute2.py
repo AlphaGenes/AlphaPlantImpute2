@@ -175,6 +175,8 @@ def sample_haplotypes_outbred(true_genotype, haplotype_library, recombination_ra
     return haplotypes
 
 
+
+@profile
 def sample_haplotypes(individual, haplotype_library, recombination_rate, error, maf):
     """Sample haplotypes for an individual using haplotype library 'haplotype_library'
     Outbreds return a pair of haplotypes as a 2d array of shape (2, n_loci)
@@ -187,9 +189,11 @@ def sample_haplotypes(individual, haplotype_library, recombination_rate, error, 
         haplotypes = sample_haplotype_inbred(haplotype, genotype, haplotype_library, recombination_rate, error, maf)
     else:
         genotype = individual.genotypes
-        haplotypes = sample_haplotypes_outbred(genotype, haplotype_library, recombination_rate, error, maf)
+        # haplotypes = sample_haplotypes_outbred(genotype, haplotype_library, recombination_rate, error, maf)
+        DiploidHMM.diploidHMM(individual, haplotype_library, haplotype_library, 
+                              error, recombination_rate, callingMethod='sample', useCalledHaps=False)
 
-    return haplotypes
+    return individual
 
 
 def refine_library(args, individuals, haplotype_library, maf, recombination_rate, error):
@@ -218,9 +222,11 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
                                        repeat(recombination_rate), repeat(error), repeat(maf))
 
         # Update library
-        identifiers = [individual.idx for individual in individuals]
-        for haplotypes, identifier in zip(results, identifiers):
-            haplotype_library.update(haplotypes, identifier)
+        for individual in results:
+            # Use the input genotype (as read in from data) as the 'true' genotype to correct the haplotypes
+            haplotypes = individual.haplotypes
+            correct_haplotypes(haplotypes[0], haplotypes[1], individual.genotypes, maf)
+            haplotype_library.update(haplotypes, individual.idx)
 
 
 @jit(nopython=True, nogil=True)
