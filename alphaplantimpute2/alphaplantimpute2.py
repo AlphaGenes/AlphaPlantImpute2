@@ -137,39 +137,17 @@ def correct_haplotypes(paternal_haplotype, maternal_haplotype, true_genotype, ma
     maternal_haplotype[mask] = maternal
 
 
-@jit(nopython=True, nogil=True)
-def sample_haplotype_inbred(true_haplotype, true_genotype, haplotype_library, recombination_rate, error, maf):
-    """Sample a haplotype for an inbred/double haploid individual using haplotype library 'haplotype_library'
-    Returns:
-      A single haplotype
-    Note: the supplied haplotype_library should NOT contain a copy of the individual's haplotypes"""
-
-    # This block should be (mostly) in BasicHMM through haploidHMM() interface
-    point_estimates = HaploidHMM.getHaploidPointEstimates(true_haplotype, haplotype_library, error) # cf. getDiploidPointEstimates_GENO
-    forward_probs = HaploidHMM.haploidForward(point_estimates, recombination_rate)
-    haplotype = HaploidHMM.haploidSampleHaplotype(forward_probs, haplotype_library, recombination_rate)
-
-    correct_haplotypes(haplotype, haplotype, true_genotype, maf)
-    return haplotype
-
-
 @profile
 def sample_haplotypes(individual, haplotype_library, recombination_rate, error):
     """Sample haplotypes for an individual using haplotype library 'haplotype_library'
-    Outbreds return a pair of haplotypes as a 2d array of shape (2, n_loci)
-    Inbreds return a single haplotype as a 1d array of shape (n_loci,)
-    Note: the supplied haplotype_library should not contain a copy of the individual's haplotypes"""
+    Note: the supplied haplotype_library should *not* contain a copy of the individual's haplotypes"""
 
     if individual.inbred:
-        haplotype = individual.haplotypes
-        genotype = individual.genotypes
-        #haplotypes = sample_haplotype_inbred(haplotype, genotype, haplotype_library, recombination_rate, error, maf)
-        #HaploidHMM.haploidHMM(...)
+        HaploidHMM.haploidHMM(individual, haplotype_library,
+                              error, recombination_rate, calling_method='sample')
     else:
-        genotype = individual.genotypes
-        DiploidHMM.diploidHMM(individual, haplotype_library, haplotype_library, 
-                              error, recombination_rate, callingMethod='sample', useCalledHaps=False)
-
+        DiploidHMM.diploidHMM(individual, haplotype_library, haplotype_library,
+                              error, recombination_rate, callingMethod='sample', use_called_haps=False)
     return individual
 
 
@@ -201,8 +179,11 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
         # Update library
         for individual in results:
             # Use the input genotype (as read in from data) as the 'true' genotype to correct the haplotypes
-            haplotypes = individual.haplotypes
-            correct_haplotypes(haplotypes[0], haplotypes[1], individual.genotypes, maf)
+            haplotypes = individual.imputed_haplotypes
+            if individual.inbred:
+                correct_haplotypes(haplotypes, haplotypes, individual.genotypes, maf)
+            else:
+                correct_haplotypes(haplotypes[0], haplotypes[1], individual.genotypes, maf)
             haplotype_library.update(haplotypes, individual.idx)
 
 
@@ -210,7 +191,7 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
 def get_dosages_inbred(haplotype, haplotype_library, recombination_rate, error):
     """Get dosages for an inbred individual
     Note: these are haploid dosages"""
-    point_estimates = HaploidHMM.getHaploidPointEstimates(haplotype, haplotype_library, error) # cf. getDiploidPointEstimates_GENO
+    point_estimates = HaploidHMM.getHaploidPointEstimates(haplotype, haplotype_library, error)
     total_probs = HaploidHMM.haploidForwardBackward(point_estimates, recombination_rate)
     dosages = HaploidHMM.getHaploidDosages(total_probs, haplotype_library)
     return dosages
