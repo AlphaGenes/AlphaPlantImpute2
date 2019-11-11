@@ -153,31 +153,8 @@ def sample_haplotype_inbred(true_haplotype, true_genotype, haplotype_library, re
     return haplotype
 
 
-@jit(nopython=True, nogil=True)
-def sample_haplotypes_outbred(true_genotype, haplotype_library, recombination_rate, error, maf):
-    """Sample a haplotype for an (outbred) individual using haplotype library 'haplotype_library'
-    Returns:
-      A a pair of haplotypes
-    Note: the supplied haplotype_library should NOT contain a copy of the individual's haplotypes"""
-
-    # This block should be (mostly) in BasicHMM through haploidHMM() interface
-    n_loci = len(true_genotype)
-    haplotypes = np.empty((2, n_loci), dtype=np.int8)
-
-    n_pat = n_mat = haplotype_library.shape[0]
-    point_estimate = np.empty((n_loci, n_pat, n_mat), dtype=np.float32)
-    DiploidHMM.getDiploidPointEstimates_geno(true_genotype, haplotype_library, haplotype_library,
-                                             error, point_estimate)
-    forward_probs = DiploidHMM.diploid_forward(point_estimate, recombination_rate, in_place=True)
-    haplotypes = DiploidHMM.diploidSampleHaplotypes(forward_probs, recombination_rate,
-                                                    haplotype_library, haplotype_library)
-    correct_haplotypes(haplotypes[0], haplotypes[1], true_genotype, maf)
-    return haplotypes
-
-
-
 @profile
-def sample_haplotypes(individual, haplotype_library, recombination_rate, error, maf):
+def sample_haplotypes(individual, haplotype_library, recombination_rate, error):
     """Sample haplotypes for an individual using haplotype library 'haplotype_library'
     Outbreds return a pair of haplotypes as a 2d array of shape (2, n_loci)
     Inbreds return a single haplotype as a 1d array of shape (n_loci,)
@@ -186,10 +163,10 @@ def sample_haplotypes(individual, haplotype_library, recombination_rate, error, 
     if individual.inbred:
         haplotype = individual.haplotypes
         genotype = individual.genotypes
-        haplotypes = sample_haplotype_inbred(haplotype, genotype, haplotype_library, recombination_rate, error, maf)
+        #haplotypes = sample_haplotype_inbred(haplotype, genotype, haplotype_library, recombination_rate, error, maf)
+        #HaploidHMM.haploidHMM(...)
     else:
         genotype = individual.genotypes
-        # haplotypes = sample_haplotypes_outbred(genotype, haplotype_library, recombination_rate, error, maf)
         DiploidHMM.diploidHMM(individual, haplotype_library, haplotype_library, 
                               error, recombination_rate, callingMethod='sample', useCalledHaps=False)
 
@@ -209,17 +186,17 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
         # each library in the generator has the corresponding individual's haplotypes masked out
         haplotype_libraries = (haplotype_library.exclude_identifiers_and_sample(individual.idx, args.n_haplotypes)
                                for individual in individuals)
+        # Arguments to pass to sample_haplotypes() via map() and ThreadPoolExecutor.map()
+        sample_haplotypes_args = (individuals, haplotype_libraries, repeat(recombination_rate), repeat(error))
 
         # Sample haplotypes for all individuals in the library
         if args.maxthreads == 1:
             # Single threaded
-            results = map(sample_haplotypes, individuals, haplotype_libraries,
-                          repeat(recombination_rate), repeat(error), repeat(maf))
+            results = map(sample_haplotypes, *sample_haplotypes_args)
         else:
             # Multithreaded
             with concurrent.futures.ThreadPoolExecutor(max_workers=args.maxthreads) as executor:
-                results = executor.map(sample_haplotypes, individuals, haplotype_libraries,
-                                       repeat(recombination_rate), repeat(error), repeat(maf))
+                results = executor.map(sample_haplotypes, *sample_haplotypes_args)
 
         # Update library
         for individual in results:
