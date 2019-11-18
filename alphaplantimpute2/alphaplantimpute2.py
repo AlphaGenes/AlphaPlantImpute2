@@ -187,39 +187,15 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
             haplotype_library.update(haplotypes, individual.idx)
 
 
-@jit(nopython=True, nogil=True)
-def get_dosages_inbred(haplotype, haplotype_library, recombination_rate, error):
-    """Get dosages for an inbred individual
-    Note: these are haploid dosages"""
-    point_estimates = HaploidHMM.getHaploidPointEstimates(haplotype, haplotype_library, error)
-    total_probs = HaploidHMM.haploidForwardBackward(point_estimates, recombination_rate)
-    dosages = HaploidHMM.getHaploidDosages(total_probs, haplotype_library)
-    return dosages
-
-
-@jit(nopython=True, nogil=True)
-def get_dosages_outbred(genotype, haplotype_library, recombination_rate, error):
-    """Get dosages for an outbred individual"""
-    n_loci = len(genotype)
-    n_pat = n_mat = haplotype_library.shape[0]
-    point_estimate = np.ones((n_loci, n_pat, n_mat), dtype=np.float32)
-
-    DiploidHMM.getDiploidPointEstimates_geno(genotype, haplotype_library, haplotype_library,
-                                             error, point_estimate)
-    total_probs = DiploidHMM.diploidForwardBackward(point_estimate, recombination_rate)
-    dosages = DiploidHMM.getDiploidDosages(total_probs, haplotype_library, haplotype_library)
-    return dosages
-
-
 def get_dosages(individual, haplotype_library, recombination_rate, error):
-    """Get dosages for an individual"""
+    """Get dosages for an individual
+    HaploidHMM.haploidHMM() and DiploidHMM.diploidHMM() set the individual's dosage member variable"""
     if individual.inbred:
-        haplotype = individual.haplotypes
-        return get_dosages_inbred(haplotype, haplotype_library, recombination_rate, error)
+        HaploidHMM.haploidHMM(individual, haplotype_library, error, recombination_rate, calling_method='dosages')
     else:
         DiploidHMM.diploidHMM(individual, haplotype_library, haplotype_library, error, recombination_rate,
                               calling_method='dosages', use_called_haps=False)
-        return individual
+    return individual
 
 
 def impute_individuals(args, pedigree, haplotype_library, recombination_rate, error):
@@ -252,7 +228,7 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
             with concurrent.futures.ThreadPoolExecutor(max_workers=args.maxthreads) as executor:
                 results = executor.map(get_dosages, *get_dosages_args)
 
-        # Update dosages from results
+        # Construct average dosages from results
         for i, individual in enumerate(results):
             dosages[i] += individual.dosages
 
