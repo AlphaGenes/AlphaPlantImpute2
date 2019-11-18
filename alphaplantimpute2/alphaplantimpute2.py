@@ -147,7 +147,7 @@ def sample_haplotypes(individual, haplotype_library, recombination_rate, error):
                               error, recombination_rate, calling_method='sample')
     else:
         DiploidHMM.diploidHMM(individual, haplotype_library, haplotype_library,
-                              error, recombination_rate, callingMethod='sample', use_called_haps=False)
+                              error, recombination_rate, calling_method='sample', use_called_haps=False)
     return individual
 
 
@@ -217,8 +217,9 @@ def get_dosages(individual, haplotype_library, recombination_rate, error):
         haplotype = individual.haplotypes
         return get_dosages_inbred(haplotype, haplotype_library, recombination_rate, error)
     else:
-        genotype = individual.genotypes
-        return get_dosages_outbred(genotype, haplotype_library, recombination_rate, error)
+        DiploidHMM.diploidHMM(individual, haplotype_library, haplotype_library, error, recombination_rate,
+                              calling_method='dosages', use_called_haps=False)
+        return individual
 
 
 def impute_individuals(args, pedigree, haplotype_library, recombination_rate, error):
@@ -231,42 +232,42 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
     individuals = pedigree
 
     # Set all dosages to zero, so they can be incrementally added to
-    for individual in individuals:
-        individual.dosages = np.full(n_loci, 0., dtype=np.float32)
+    dosages = np.zeros((len(individuals), n_loci), dtype=np.float32)
 
-    # Loop
+    # Loop over rounds
     for iteration in range(args.n_impute_rounds):
         print('  Iteration', iteration)
 
         # Sample the haplotype library for each iteration
-        haplotype_library_sample = haplotype_library.sample(args.n_haplotypes) # should this include the individual being imputed?
+        haplotype_library_sample = haplotype_library.sample(args.n_haplotypes) # should this include the individual being imputed - probably not
+        # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
+        get_dosages_args = (individuals, repeat(haplotype_library_sample), repeat(recombination_rate), repeat(error))
 
         # Get dosages for all individuals
         if args.maxthreads == 1:
             # Single threaded
-            results = map(get_dosages, individuals, repeat(haplotype_library_sample),
-                          repeat(recombination_rate), repeat(error))
+            results = map(get_dosages, *get_dosages_args)
         else:
             # Multithreaded
             with concurrent.futures.ThreadPoolExecutor(max_workers=args.maxthreads) as executor:
-                results = executor.map(get_dosages, individuals, repeat(haplotype_library_sample),
-                                       repeat(recombination_rate), repeat(error))
+                results = executor.map(get_dosages, *get_dosages_args)
 
         # Update dosages from results
-        for dosages, individual in zip(results, individuals):
-            individual.dosages += dosages
+        for i, individual in enumerate(results):
+            dosages[i] += individual.dosages
 
     # Normalize dosages and generate genotypes
-    for individual in pedigree:
-        individual.dosages /= args.n_impute_rounds
+    for i, individual in enumerate(individuals):
+        dosages[i] /= args.n_impute_rounds
         if individual.inbred:
-            # Dosage for inbred/double haploids is for a haplotype
+            # The calculated dosage for an inbred/DH individual is for its single haplotype
             #   round dosage and then multiply by 2 to get genotype
             #   this prevents inbred/double haploids having loci imputed as heterozygous
-            individual.genotypes = 2*np.int8(np.round(individual.dosages))
-            individual.dosages *= 2
+            individual.genotypes = 2*np.int8(np.round(dosages[i]))
+            individual.dosages = 2*dosages[i]
         else:
-            individual.genotypes = np.int8(np.round(individual.dosages))
+            individual.genotypes = np.int8(np.round(dosages[i]))
+            individual.dosages = dosages[i]
 
 
 def set_seed(args):
