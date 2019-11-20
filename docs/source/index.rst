@@ -17,22 +17,18 @@ Introduction
 ~~~~~~~~~~~~
 
 
-|program| is a genotype imputation and phasing algorithm for diploid plants. |program| supports individuals genotyped with SNP array data. 
+|program| is a genotype imputation algorithm for haploid and diploid plants. |program| supports individuals genotyped with SNP array data. 
 
-Please report any issues to `John.Hickey@roslin.ed.ac.uk <John.Hickey@roslin.ed.ac.uk>`_ or `steve.thorn@roslin.ed.ac.uk <steve.thorn@roslin.ed.ac.uk>`_.
+Please report any issues to `alphagenes@roslin.ed.ac.uk <alphagenes@roslin.ed.ac.uk>`_ or `steve.thorn@roslin.ed.ac.uk <steve.thorn@roslin.ed.ac.uk>`_.
 
 Conditions of use
 -----------------
-|program| is part of a suite of software that our group has developed. It is currently only availble for use by KWS SAAT SE & Co. KGaA. All other interested commercial organizations are requested to contact John Hickey (`John.Hickey@roslin.ed.ac.uk <John.Hickey@roslin.ed.ac.uk>`_) to discuss the terms of use.
+|program| is part of a suite of software that the AlphaGenes group has developed. It is currently only availble for use by KWS SAAT SE & Co. KGaA. All other interested parties are requested to contact John Hickey (`John.Hickey@roslin.ed.ac.uk <John.Hickey@roslin.ed.ac.uk>`_) to discuss the terms of use.
 
-Citation and Authorship
------------------------
+Authorship
+----------
 
 |program| is part of a body of imputation software developed by the AlphaGenes group under Professor John Hickey. It is based on the hidden Markov model (HMM) used in AlphaImpute. |program| was written by Steve Thorn and Andrew Whalen, and is currently being supported by Steve Thorn.
-
-Citation:
-A citation could go here.
-
 
 Disclaimer
 ----------
@@ -40,27 +36,25 @@ Disclaimer
 While every effort has been made to ensure that |program| does what it claims to do, there is absolutely no guarantee that the results provided are correct. Use of |program| is at your own risk.
 
 
-Program Options
+Program options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-|program| takes in a number of command line arguments to control the program's behaviour. To view a list of arguments, run |program| without any command line arguments, i.e. ``|program|`` or ``|program| -h``. 
+|program| takes a number of command line arguments to control its behaviour. To display a list of arguments, use either ``AlphaPlantImpute2`` or ``AlphaPlantImpute2 -h``. 
 
 
-Core Options 
+Core options 
 --------------
 ::
   
-    Core Options:
       -out OUT              The output file prefix.
 
-The ``-out`` argument gives the output file prefix for the outputs of |program|. By default, |program| outputs a file with imputed genotypes, ``prefix.genotypes``, phased haplotypes ``prefix.phase``, and genotype dosages ``prefix.dosages``. For more information on which files are created, see "Output Arguments", below.
+The ``-out`` argument specifies the output file prefix. For example, with ``-out prefix``, |program| outputs the imputed genotypes to ``prefix.genotypes`` and genotype dosages to ``prefix.dosages``.
 
 
-Input Options 
+Input options 
 ----------------
 ::
 
-    Input Options:
       -genotypes [GENOTYPES [GENOTYPES ...]]
                             A file in AlphaGenes format.
       -pedigree [PEDIGREE [PEDIGREE ...]]
@@ -70,34 +64,30 @@ Input Options
       -stopsnp STOPSNP      The last marker to consider.
       -seed SEED            A random seed to use for debugging.
       
-|program| requires one or more genotype files and, optionally, a pedigree file to run the analysis.
+|program| requires one or more genotype files and, optionally, a pedigree file that specifies whether individuals are inbred/double haploid or outbred.
 
-[How pedigree specifies inbred/dh status]
+|program| supports genotype files in the AlphaGenes format as specified by the ``-genotypes`` option. A pedigree file can be supplied using the ``-pedigree`` option. 
 
-|program| supports binary plink files, ``-bfile`` and genotype files in the AlphaGenes format, ``-genotypes``. A pedigree file can also be supplied using the ``-pedigree`` option. 
-
-
-Multithreading Options 
+ 
+Multithreading options 
 ------------------------
 ::
 
-    Multithreading Options:
       -maxthreads MAXTHREADS
                             Maximum number of threads to use for analysis.
                             Default: 1.
       -iothreads IOTHREADS  Number of threads to use for input and output.
                             Default: 1.
 
-|program| supports multithreading for running the analysis, and for reading in and writing out (large amounts of) data. The parameter ``-maxthreads`` controls the number of threads used by the algorithm. The parameter ``-iothreads`` controls the number of threads used for input and output. Setting this option to a value greater than 1 is only recommended for very large files (i.e. >10,000 individuals).
+|program| supports multithreading for running the analysis, and for reading in and writing out (large amounts of) data. The parameter ``-maxthreads`` controls the number of threads used by the analysis. The parameter ``-iothreads`` controls the number of threads used for input and output — setting this option to a value greater than 1 is only recommended for very large files (>10,000 individuals).
 
 
-Algorithm Options 
+Algorithm options 
 ------------------------
 ::
 
-    Algorithm Options:
       -hd_threshold HD_THRESHOLD
-                            Percentage of non-missing markers to classify an
+                            Fraction of non-missing markers to classify an
                             individual as high-density. Only high-density
                             individuals make up haplotype library. Default: 0.9.
       -n_haplotypes N_HAPLOTYPES
@@ -108,19 +98,18 @@ Algorithm Options
       -n_impute_rounds N_IMPUTE_ROUNDS
                             Number of rounds of imputation. Default: 5.
 
-|program| performs the following steps:  
 
-Create haplotype library
-    Putative haplotypes are generated from the genotypes of high-density individuals.
-    Homozygous loci are de-facto phased; heterozygous loci are randomly assigned with equal probability and missing loci are randomly assigned according to minor allele frequency. [Lots of passive voice]
+These options control the algorithm that |program| uses. The algorithm performs the following steps:  
 
-Refine haplotype library
-    Each haplotype in the library is refined using a hidden Markov model. The hidden states (at each locus) are the other haplotypes in the library (excluding the haplotype being considered). The model randomly generates a new haplotype according to the HMM's probabilities considering other haplotypes in the library, but *excluding* the haplotype being considered. The number of haplotypes considered is also reduced by randomly sampling a (user-defined) number of haplotypes. This number is a tradeoff between high imputation accuracy (high numbers) and faster computation time (low numbers). Once one set of new haplotypes has been generated, this process repeats using these newly generated haplotypes. A (user-specified) number of rounds is used to refine the haplotypes. This step, in effect, phases the high-density individuals. A small number of rounds (e.g. 10) is usually sufficient to converge to an accurate solution.
+Create a haplotype library
+    pairs of haplotypes are generated from the genotypes of high-density individuals. High-density individuals are those with a fraction of non-missing markers greater than a given threshold (``-hd_threshold``). Homozygous loci are de-facto phased; heterozygous loci are randomly assigned with equal probability and missing loci are randomly assigned according to minor allele frequency.
+
+Refine the haplotype library
+    each haplotype in the library is refined using a hidden Markov model. The hidden states (at each locus) are either haplotypes in the library (for inbred/double haploid individuals), or pairs of haplotypes (for outbred, diploid individuals). The model randomly generates a haplotype (inbred/double haploid) or pair of haplotypes (outbred, diploid) according to the HMM probabilities. The number of haplotypes considered by the HMM is reduced by randomly sampling a number of haplotypes (``-n_haplotypes``). This number is a trade-off between higher imputation accuracy (higher numbers of haplotypes) and faster computation time (lower numbers). Once each haplotype has been generated, the process iterates for a number of rounds (``-n_sample_rounds``) to refine the haplotypes. A small number of rounds (e.g. 10) is usually being sufficient to accurately estimate the haplotypes. This step, in effect, phases the high-density individuals. 
 
 Impute individuals
-    Each individual's genotype is imputed using a HMM, which uses all pairs of haplotypes in the refined library as hidden states. Again, the number of haplotypes considered is reduced by randomly sampling and the procsess repeats a (user-defined) number of times updating the average genotype dosages at each step. The imputed genotypes are simply the integer rounded values of the dosages.
+    each individual's genotype is imputed using the same hidden Markov Model and haplotypes in the refined library as hidden states. Again, the number of haplotypes considered is reduced by randomly sampling (``-n_haplotypes``) and the process repeats for a number of rounds (``-n_impute_rounds``), updating the average genotype dosages each time. The imputed genotypes are simply the integer-rounded values of the dosages.
 
-This is a tradeoff between high imputation accuracy (high numbers) and faster computation time (low numbers)
 
 Input file formats
 ~~~~~~~~~~~~~~~~~~
@@ -128,7 +117,7 @@ Input file formats
 Genotype file 
 -------------
 
-Genotype files contain the input genotypes for each individual. The first value in each line is the individual's identifier. The remaining values are the genotypes of the individual at each locus, either 0, 1, or 2 (or 9 if missing). The following examples gives the genotypes for four individuals genotyped on four markers each.
+Genotype files contain the input genotypes for each individual. The first value in each line is the individual's identifier. The remaining values are the genotypes of the individual at each locus, either 0, 1, or 2 (or 9 if missing). The following example gives the genotypes for four individuals genotyped on four markers each.
 
 Example: ::
 
@@ -140,15 +129,17 @@ Example: ::
 Pedigree file
 -------------
 
-Each line of a pedigree file has three values, the individual's identifier, their father's identifier, and their mother's identifier. '0' represents an unknown identifier.
+The pedigree file is only used to specify which individuals are inbred/double haploid or outbred. Each line of the pedigree file has three or four values: the individual's identifier, their father's identifier and their mother's identifier (both '0' in this case, where '0' represents an unknown identifier). The, optional, fourth column specifies whether the individual is inbred or a double haploid ('inbred' or 'dh', case insensitive) or not ('outbred', case insensitive; or an empty field). The algorithm treats inbred and double haploid individuals identically — any residual heterozygous markers in the genotype file are set to missing.
+
+The following example shows four individuals, two double haploids and two outbred individuals.
 
 Example: ::
 
-  id1 0 0
+  id1 0 0 DH
   id2 0 0
-  id3 id1 id2
-  id4 id1 id2
-
+  id3 0 0 DH
+  id4 0 0
+ 
 
 Output file formats
 ~~~~~~~~~~~~~~~~~~~
@@ -165,32 +156,16 @@ Example: ::
   id3 2 0 2 0 
   id4 0 2 1 0
   
-Phase file
------------
-
-The phase file gives the phased haplotypes (either 0 or 1) for each [high-density?] individual in two lines.
-
-Example: ::
-
-  id1 0 1 1 0
-  id1 0 1 1 0
-  id2 1 1 1 0
-  id2 0 0 0 1
-  id3 1 0 1 0
-  id3 1 0 1 0 
-  id4 0 1 0 0
-  id4 0 1 1 0
-
 Dosage file
 -----------
 
-The dosage file gives the expected allele dosage for the alternative (or minor) allele for each individual. The first value in each line is the individual's identifier. The remaining values are the allele dosages at each loci. If there is a lot of uncertainty in the underlying genotype calls, this file can often prove more accurate than the called genotype values. [add some values like 1.5, 0.7 1.9 etc.]
+The dosage file gives the expected allele dosage for the alternative (or minor) allele for each individual. The first value in each line is the individual's identifier. The remaining values are the allele dosages at each locus. If there is a lot of uncertainty in the underlying genotype calls, this file can often prove more accurate than the called genotype values.
 
 Example: ::
 
-  id1    0.0003    2.0000    2.0000    0.0001
+  id1    0.0503    2.0000    1.7890    0.0001
   id2    1.0000    1.0000    1.0000    1.0000
-  id3    2.0003    0.0000    2.0000    0.0001
+  id3    2.0000    0.0000    2.0000    0.0001
   id4    0.0000    2.0000    1.0000    0.0000
 
 
