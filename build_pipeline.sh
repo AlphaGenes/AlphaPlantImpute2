@@ -10,7 +10,7 @@ if [[ ! -f alphaplantimpute2/tinyhouse/Pedigree.py ]] ; then
 fi
 
 # Create python wheel
-rm -r build dist
+rm -rf build dist
 python setup.py bdist_wheel
 
 # User guide
@@ -20,7 +20,7 @@ cd ..
 
 # Zip file
 rm -rf zip
-mkdir zip/$target
+mkdir -p zip/$target
 
 # Copy the wheel
 cp dist/* zip/$target 

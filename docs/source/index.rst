@@ -28,7 +28,7 @@ Conditions of use
 Authorship
 ----------
 
-|program| is part of a body of imputation software developed by the AlphaGenes group under Professor John Hickey. It is based on the hidden Markov model (HMM) used in AlphaImpute. |program| was written by Steve Thorn and Andrew Whalen, and is currently being supported by Steve Thorn.
+|program| is part of a body of imputation software developed by the AlphaGenes group under John Hickey. It is based on the hidden Markov model (HMM) developed by Roberto Antolín in AlphaImpute (Antolín et al. 2017), and is similar to the algorithm used in MaCH (Li et al. 2011). |program| was written by Steve Thorn and Andrew Whalen, and is currently being supported by Steve Thorn.
 
 Disclaimer
 ----------
@@ -102,13 +102,13 @@ Algorithm options
 These options control the algorithm that |program| uses. The algorithm performs the following steps:  
 
 Create a haplotype library
-    pairs of haplotypes are generated from the genotypes of high-density individuals. High-density individuals are those with a fraction of non-missing markers greater than a given threshold (``-hd_threshold``). Homozygous loci are de-facto phased; heterozygous loci are randomly assigned with equal probability and missing loci are randomly assigned according to minor allele frequency.
+    Pairs of haplotypes are generated from the genotypes of high-density individuals. High-density individuals are those with a fraction of non-missing markers greater than a given threshold (``-hd_threshold``). Homozygous loci are de-facto phased; heterozygous loci are randomly assigned with equal probability and missing loci are randomly assigned according to minor allele frequency.
 
 Refine the haplotype library
-    each haplotype in the library is refined using a hidden Markov model. The hidden states (at each locus) are either haplotypes in the library (for inbred/double haploid individuals), or pairs of haplotypes (for outbred, diploid individuals). The model randomly generates a haplotype (inbred/double haploid) or pair of haplotypes (outbred, diploid) according to the HMM probabilities. The number of haplotypes considered by the HMM is reduced by randomly sampling a number of haplotypes (``-n_haplotypes``). This number is a trade-off between higher imputation accuracy (higher numbers of haplotypes) and faster computation time (lower numbers). Once each haplotype has been generated, the process iterates for a number of rounds (``-n_sample_rounds``) to refine the haplotypes. A small number of rounds (e.g. 10) is usually being sufficient to accurately estimate the haplotypes. This step, in effect, phases the high-density individuals. 
+    Each haplotype in the library is refined using a hidden Markov model. The hidden states (at each locus) are either haplotypes in the library (for inbred/double haploid individuals), or pairs of haplotypes (for outbred, diploid individuals). The model randomly generates a haplotype (inbred/double haploid) or pair of haplotypes (outbred, diploid) according to the HMM probabilities. The number of haplotypes considered by the HMM is reduced by randomly sampling a number of haplotypes (``-n_haplotypes``). This number is a trade-off between higher imputation accuracy (higher numbers of haplotypes) and faster computation time (lower numbers). Once each haplotype has been generated, the process iterates for a number of rounds (``-n_sample_rounds``) to refine the haplotypes. A small number of rounds (e.g. 10) is usually being sufficient to accurately estimate the haplotypes. This step, in effect, phases the high-density individuals. 
 
 Impute individuals
-    each individual's genotype is imputed using the same hidden Markov Model and haplotypes in the refined library as hidden states. Again, the number of haplotypes considered is reduced by randomly sampling (``-n_haplotypes``) and the process repeats for a number of rounds (``-n_impute_rounds``), updating the average genotype dosages each time. The imputed genotypes are simply the integer-rounded values of the dosages.
+    Each individual's genotype is imputed using the same hidden Markov Model and haplotypes in the refined library as hidden states. Again, the number of haplotypes considered is reduced by randomly sampling (``-n_haplotypes``) and the process repeats for a number of rounds (``-n_impute_rounds``), updating the average genotype dosages each time. The imputed genotypes are simply the integer-rounded values of the dosages.
 
 
 Input file formats
@@ -145,7 +145,7 @@ Output file formats
 ~~~~~~~~~~~~~~~~~~~
 
 Genotype file
------------
+---------------
 
 The genotype file gives the imputed genotypes (either 0, 1, or 2) for each individual at each locus.
 
