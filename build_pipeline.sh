@@ -20,7 +20,7 @@ cd ..
 
 # Zip file
 rm -rf zip
-mkdir zip/$target
+mkdir -p zip/$target
 
 # Copy the wheel
 cp dist/* zip/$target 
