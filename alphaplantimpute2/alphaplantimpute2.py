@@ -10,10 +10,11 @@ from pkg_resources import get_distribution, DistributionNotFound
 from . tinyhouse import HaploidHMM, DiploidHMM, InputOutput, Pedigree, HaplotypeLibrary
 
 
+# Get version
 try:
     __version__ = get_distribution('alphaplantimpute2').version
 except DistributionNotFound:
-    # Package not installed
+    # Package has not been installed
     __version__ = None
 
 
@@ -154,11 +155,11 @@ def sample_haplotypes(individual, haplotype_library, recombination_rate, error):
 def refine_library(args, individuals, haplotype_library, maf, recombination_rate, error):
     """Refine haplotype library"""
 
-    print(f'Refining haplotype library: {args.n_sample_rounds} iterations, {args.n_haplotypes} samples per iteration')
+    print(f'Refining haplotype library: {args.n_sample_rounds} rounds, {args.n_haplotypes} samples per round')
 
     # Loop over iterations
     for iteration in range(args.n_sample_rounds):
-        print('  Iteration', iteration)
+        print(f'  Round {iteration}')
 
         # Generator of subsampled haplotype libraries for ThreadPoolExecutor.map()
         # each library in the generator has the corresponding individual's haplotypes masked out
@@ -202,7 +203,7 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
     """Impute all individuals in the pedigree"""
 
     n_loci = pedigree.nLoci
-    print(f'Imputing individuals: {args.n_impute_rounds} iterations, {args.n_haplotypes} samples per iteration')
+    print(f'Imputing individuals: {args.n_impute_rounds} rounds, {args.n_haplotypes} samples per round')
 
     # Iterate over all individuals in the Pedigree() object
     individuals = pedigree
@@ -212,7 +213,7 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
 
     # Loop over rounds
     for iteration in range(args.n_impute_rounds):
-        print('  Iteration', iteration)
+        print(f'  Round {iteration}')
 
         # Sample the haplotype library for each iteration
         haplotype_library_sample = haplotype_library.sample(args.n_haplotypes) # should this include the individual being imputed - probably not
@@ -285,8 +286,7 @@ def main():
 
     # Print boilerplate text
     name = 'AlphaPlantImpute2'
-    description = 'Software for phasing and imputing genotypes in plant populations'
-    InputOutput.print_boilerplate(name, __version__, description)
+    InputOutput.print_boilerplate(name, __version__)
 
     # Handle command-line arguments
     args = getargs()
@@ -307,7 +307,8 @@ def main():
     pedigree.high_density_threshold = args.hd_threshold
     pedigree.set_high_density()
     individuals = high_density_individuals(pedigree)
-    print('# HD individuals', len(individuals))
+    print(f'{len(pedigree)} individuals')
+    print(f'{len(individuals)} individuals are high-density (threshold {args.hd_threshold})')
 
     # Various parameters
     error = np.full(n_loci, 0.01, dtype=np.float32)
