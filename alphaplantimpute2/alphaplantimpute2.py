@@ -45,7 +45,7 @@ def getargs():
     # Algorithm options
     algorithm_parser = parser.add_argument_group('Algorithm Options')
     algorithm_parser.add_argument('-hd_threshold', default=0.9, required=False, type=float,
-                                  help='Percentage of non-missing markers to classify an individual as high-density. Only high-density individuals make up the haplotype library. Default: 0.9.')
+                                  help='Fraction of non-missing markers to classify an individual as high-density. Only high-density individuals make up the haplotype library. Default: 0.9.')
     algorithm_parser.add_argument('-n_haplotypes', default=100, required=False, type=int,
                                   help='Number of haplotypes to sample from the haplotype library in each HMM round. Default: 100.')
     algorithm_parser.add_argument('-n_sample_rounds', default=10, required=False, type=int,
