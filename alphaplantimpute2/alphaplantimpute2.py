@@ -307,8 +307,7 @@ def main():
     pedigree.high_density_threshold = args.hd_threshold
     pedigree.set_high_density()
     individuals = high_density_individuals(pedigree)
-    print(f'{len(pedigree)} individuals')
-    print(f'{len(individuals)} individuals are high-density (threshold {args.hd_threshold})')
+    print(f'Read in {len(pedigree)} individuals, {len(individuals)} are at high-density (threshold {args.hd_threshold})')
 
     # Various parameters
     error = np.full(n_loci, 0.01, dtype=np.float32)
