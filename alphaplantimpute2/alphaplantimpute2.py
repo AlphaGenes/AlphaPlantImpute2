@@ -258,25 +258,6 @@ def set_seed(args):
         random.seed(args.seed)
 
 
-def print_boilerplate():
-    """Print software name, version etc."""
-    name = 'AlphaPlantImpute2'  # get from __name__?
-    description = 'Software for phasing and imputing genotypes in plant populations'
-    author = 'AlphaGenes Group (http://alphagenes.roslin.ed.ac.uk)'
-    version = f'Version: {__version__}'
-    box_text = ['', name, '', version, '']
-    width = 80
-    print('*' * width)
-    for line in box_text:
-        print(f'*{line:^{width-2}}*')
-    print('*' * width)
-    extra_text = ['', description, '', author]
-    for line in extra_text:
-        print(f'{line:<{width}}')
-    print('-' * width)
-    print(' ' * width)
-
-
 def handle_inbreds(pedigree):
     """Handle any inbred/double haploid individuals: set any heterozygous loci to missing
     and warn"""
@@ -302,7 +283,10 @@ def handle_inbreds(pedigree):
 def main():
     """Main execution code"""
 
-    print_boilerplate()
+    # Print boilerplate text
+    name = 'AlphaPlantImpute2'
+    description = 'Software for phasing and imputing genotypes in plant populations'
+    InputOutput.print_boilerplate(name, __version__, description)
 
     # Handle command-line arguments
     args = getargs()
