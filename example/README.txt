@@ -12,7 +12,7 @@ Files:
 Imputation with AlphaPlantImpute2
 =================================
 
-To impute the genotypes with AlphaPlantImpute2 on the example data run:
+To impute the genotypes with AlphaPlantImpute2 on the example data, run:
 
 AlphaPlantImpute2 -out imputed -genotypes masked.genotypes -n_sample_rounds 5 -n_haplotypes 20
 
