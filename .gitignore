@@ -1,6 +1,8 @@
 *.ipynb
 dist/
-bin
+bin/
+build/
+zip/
 __pycache__/
 *.py[cod]
 *.DS_Store
@@ -9,4 +11,3 @@ __pycache__/
 .ipynb_checkpoints/
 .vscode/
 .Rhistory
-build/
