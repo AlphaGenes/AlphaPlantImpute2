@@ -168,5 +168,17 @@ Example: ::
   id3    2.0000    0.0000    2.0000    0.0001
   id4    0.0000    2.0000    1.0000    0.0000
 
+Phase file
+---------------
+
+The phase file gives the imputed phases (either 0, or 1) for each individual's haplotypes at each locus.
+
+Example: ::
+
+  id1 0 1 1 0 
+  id1 0 1 1 0
+  id2 0 0 0 1 
+  id2 1 1 1 0
+
 
 .. |program| replace:: AlphaPlantImpute2
