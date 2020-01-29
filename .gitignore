@@ -2,6 +2,7 @@
 dist/
 bin/
 build/
+zip/
 __pycache__/
 *.py[cod]
 *.DS_Store
