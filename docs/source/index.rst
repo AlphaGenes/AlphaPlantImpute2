@@ -110,6 +110,8 @@ Refine the haplotype library
 Impute individuals
     Each individual's genotype is imputed using the same hidden Markov Model and haplotypes in the refined library as hidden states. Again, the number of haplotypes considered is reduced by randomly sampling (``-n_haplotypes``) and the process repeats for a number of rounds (``-n_impute_rounds``), updating the average genotype dosages each time. The imputed genotypes are simply the integer-rounded values of the dosages.
 
+Phase individuals
+    Each individual is phased using the same hidden Markov Model and the Viterbi algorithm. Again, the number of haplotypes considered is reduced by randomly sampling (``-n_haplotypes``), but only one round is necessary as the Viterbi algorithm finds the *most likely* phased haplotype. Any inconsistencies between imputed genotype and imputed phase are corrected by modifying the haplotypes.
 
 Input file formats
 ~~~~~~~~~~~~~~~~~~
