@@ -155,7 +155,7 @@ def sample_haplotypes(individual, haplotype_library, recombination_rate, error):
 def refine_library(args, individuals, haplotype_library, maf, recombination_rate, error):
     """Refine haplotype library"""
 
-    print(f'Refining haplotype library: {args.n_sample_rounds} rounds, {args.n_haplotypes} samples per round')
+    print(f'Refining haplotype library: {args.n_sample_rounds} rounds, {args.n_haplotypes} haplotype samples per round')
 
     # Loop over iterations
     for iteration in range(args.n_sample_rounds):
@@ -199,11 +199,22 @@ def get_dosages(individual, haplotype_library, recombination_rate, error):
     return individual
 
 
+def get_phase(individual, haplotype_library, recombination_rate, error):
+    """Get phase for an individual
+    HaploidHMM.haploidHMM() and DiploidHMM.diploidHMM() set the individual's imputed_haplotypes member variable"""
+    if individual.inbred:
+        HaploidHMM.haploidHMM(individual, haplotype_library, error, recombination_rate, calling_method='Viterbi')
+    else:
+        DiploidHMM.diploidHMM(individual, haplotype_library, haplotype_library, error, recombination_rate,
+                              calling_method='Viterbi', use_called_haps=False)
+    return individual
+
+
 def impute_individuals(args, pedigree, haplotype_library, recombination_rate, error):
     """Impute all individuals in the pedigree"""
 
     n_loci = pedigree.nLoci
-    print(f'Imputing individuals: {args.n_impute_rounds} rounds, {args.n_haplotypes} samples per round')
+    print(f'Imputing individuals: {args.n_impute_rounds} rounds, {args.n_haplotypes} haplotype samples per round')
 
     # Iterate over all individuals in the Pedigree() object
     individuals = pedigree
@@ -245,6 +256,43 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
         else:
             individual.genotypes = np.int8(np.round(dosages[i]))
             individual.dosages = dosages[i]
+
+
+def phase_individuals(args, pedigree, haplotype_library, maf, recombination_rate, error):
+    """Phase all individuals in the pedigree"""
+
+    n_loci = pedigree.nLoci
+    print(f'Phasing individuals: {args.n_haplotypes} haplotype samples')
+
+    # Iterate over all individuals in the Pedigree() object
+    individuals = pedigree
+
+    # Sample the haplotype library
+    haplotype_library_sample = haplotype_library.sample(args.n_haplotypes) # should this include the individual being imputed - probably not
+    # Arguments to pass to get_phase() via map() and ThreadPoolExecutor.map()
+    get_phase_args = (individuals, repeat(haplotype_library_sample), repeat(recombination_rate), repeat(error))
+
+    # Get dosages for all individuals
+    if args.maxthreads == 1:
+        # Single threaded
+        results = map(get_phase, *get_phase_args)
+    else:
+        # Multithreaded
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.maxthreads) as executor:
+            results = executor.map(get_phase, *get_phase_args)
+
+    # Loop over results
+    for individual in results:
+        # (After imputation, `individual.genotype` is the imputed genotype.)
+        # Use the imputed genotype to correct the haplotypes, so that imputed phase and genotype are consistent
+        haplotypes = individual.imputed_haplotypes
+        if individual.inbred:
+            correct_haplotypes(haplotypes, haplotypes, individual.genotypes, maf)
+        else:
+            correct_haplotypes(haplotypes[0], haplotypes[1], individual.genotypes, maf)
+        # Copy phased haplotypes into `haplotypes` member variable ready for
+        # writing out with Pedigree.writePhase()
+        individual.haplotypes = haplotypes
 
 
 def set_seed(args):
@@ -320,10 +368,13 @@ def main():
    # Imputation
     impute_individuals(args, pedigree, haplotype_library, recombination_rate, error)
 
+    # Phasing
+    phase_individuals(args, pedigree, haplotype_library, pedigree.maf, recombination_rate, error)
+
     # Output
     pedigree.writeDosages(args.out + '.dosages')
     pedigree.writeGenotypes(args.out + '.genotypes')
-
+    pedigree.writePhase(args.out + '.phase')
 
 if __name__ == "__main__":
     main()
