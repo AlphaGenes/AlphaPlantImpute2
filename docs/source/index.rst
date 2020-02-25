@@ -97,6 +97,8 @@ Algorithm options
                             Number of rounds of library refinement. Default: 10.
       -n_impute_rounds N_IMPUTE_ROUNDS
                             Number of rounds of imputation. Default: 5.
+      -error ERROR          Genotyping error rate. Default: 0.01.
+      -recomb RECOMB        Recombination rate per chromosome. Default: 1.
 
 
 These options control the algorithm that |program| uses. The algorithm performs the following steps:  
