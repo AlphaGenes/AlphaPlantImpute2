@@ -37,7 +37,7 @@ def getargs():
 
     # Input options
     input_parser = parser.add_argument_group('Input Options')
-    InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
+    InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'phasefile', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
 
     # Multithreading options
     multithread_parser = parser.add_argument_group('Multithreading Options')
@@ -109,6 +109,23 @@ def create_haplotype_library(individuals, maf):
     haplotype_library = HaplotypeLibrary.HaplotypeLibrary(n_loci=n_loci)
     for individual in individuals:
         paternal_haplotype, maternal_haplotype = generate_haplotypes(individual.genotypes, maf)
+        if individual.inbred:
+            # Only append one haplotype for an inbred/double haploid individual
+            haplotype_library.append(paternal_haplotype, identifier=individual.idx)
+        else:
+            haplotype_library.append(paternal_haplotype, identifier=individual.idx)
+            haplotype_library.append(maternal_haplotype, identifier=individual.idx)
+
+    haplotype_library.freeze()
+    return haplotype_library
+
+
+def create_haplotype_library_from_haplotypes(individuals, n_loci):
+    """Create a haplotype library from the individuals' haplotypes
+    E.g. as read in with -phasefile"""
+    haplotype_library = HaplotypeLibrary.HaplotypeLibrary(n_loci=n_loci)
+    for individual in individuals:
+        paternal_haplotype, maternal_haplotype = individual.haplotypes
         if individual.inbred:
             # Only append one haplotype for an inbred/double haploid individual
             haplotype_library.append(paternal_haplotype, identifier=individual.idx)
@@ -363,14 +380,19 @@ def main():
     recombination_rate = np.full(n_loci, args.recomb/n_loci, dtype=np.float32)
  
     # Library
-    haplotype_library = create_haplotype_library(individuals, pedigree.maf)
-    refine_library(args, individuals, haplotype_library, pedigree.maf, recombination_rate, error_rate)
+    if not args.phasefile:
+        haplotype_library = create_haplotype_library(individuals, pedigree.maf)
+        refine_library(args, individuals, haplotype_library, pedigree.maf, recombination_rate, error_rate)
+    else:
+        haplotype_library = create_haplotype_library_from_haplotypes(individuals, n_loci)
 
-   # Imputation
+    print(haplotype_library)
+    # Imputation
     impute_individuals(args, pedigree, haplotype_library, recombination_rate, error_rate)
 
     # Phasing
-    phase_individuals(args, pedigree, haplotype_library, pedigree.maf, recombination_rate, error_rate)
+    if not args.phasefile:
+        phase_individuals(args, pedigree, haplotype_library, pedigree.maf, recombination_rate, error_rate)
 
     # Output
     pedigree.writeDosages(args.out + '.dosages')
