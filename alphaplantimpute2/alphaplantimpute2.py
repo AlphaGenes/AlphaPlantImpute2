@@ -53,6 +53,9 @@ def getargs():
                                   help='Number of rounds of library refinement. Default: 10.')
     algorithm_parser.add_argument('-n_impute_rounds', default=5, required=False, type=int,
                                   help='Number of rounds of imputation. Default: 5.')
+    algorithm_parser.add_argument('-libbest', default=0, required=False, type=int,
+                                  help='(Test) whether to use best haps for library refinement. Default: 0')
+
     InputOutput.add_arguments_from_dictionary(algorithm_parser, InputOutput.get_probability_options(), options=['error', 'recombination'])
     
     return InputOutput.parseArgs('alphaplantimpute2', parser)
@@ -181,10 +184,13 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
 
         # Generator of subsampled haplotype libraries for ThreadPoolExecutor.map()
         # each library in the generator has the corresponding individual's haplotypes masked out
-        haplotype_libraries = (haplotype_library.exclude_identifiers_and_sample(individual.idx, args.n_haplotypes)
-                               for individual in individuals)
+        if args.libbest == 1:
+            haplotype_libraries = (haplotype_library.sample_best_individuals(args.n_haplotypes, individual.genotypes, individual.idx) for individual in individuals)
+        else:
+            haplotype_libraries = (haplotype_library.exclude_identifiers_and_sample(individual.idx, args.n_haplotypes) for individual in individuals)
+
         # Arguments to pass to sample_haplotypes() via map() and ThreadPoolExecutor.map()
-        sample_haplotypes_args = (individuals, haplotype_libraries, repeat(recombination_rate), repeat(error_rate))
+        sample_haplotypes_args = (individuals, haplotype_libraries, repeat(recombination_rate), repeat(error_rate))  # can move outside loop
 
         # Sample haplotypes for all individuals in the library
         if args.maxthreads == 1:
@@ -240,14 +246,19 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
     # Set all dosages to zero, so they can be incrementally added to
     dosages = np.zeros((len(individuals), n_loci), dtype=np.float32)
 
+    #
+    haplotype_library_sample = (haplotype_library.sample_best_individuals(args.n_haplotypes, individual.genotypes) for individual in individuals)
+
     # Loop over rounds
     for iteration in range(args.n_impute_rounds):
         print(f'  Round {iteration}')
 
         # Sample the haplotype library for each iteration
-        haplotype_library_sample = haplotype_library.sample(args.n_haplotypes) # should this include the individual being imputed - probably not
+#        haplotype_library_sample = haplotype_library.sample(args.n_haplotypes) # should this include the individual being imputed - probably not
+
         # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
-        get_dosages_args = (individuals, repeat(haplotype_library_sample), repeat(recombination_rate), repeat(error_rate))
+#        get_dosages_args = (individuals, repeat(haplotype_library_sample), repeat(recombination_rate), repeat(error_rate))
+        get_dosages_args = (individuals, haplotype_library_sample, repeat(recombination_rate), repeat(error_rate))
 
         # Get dosages for all individuals
         if args.maxthreads == 1:
@@ -386,7 +397,7 @@ def main():
     else:
         haplotype_library = create_haplotype_library_from_haplotypes(individuals, n_loci)
 
-    print(haplotype_library)
+#    print(haplotype_library)
     # Imputation
     impute_individuals(args, pedigree, haplotype_library, recombination_rate, error_rate)
 
