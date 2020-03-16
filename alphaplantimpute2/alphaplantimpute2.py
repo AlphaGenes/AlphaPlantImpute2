@@ -177,6 +177,8 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
     """Refine haplotype library"""
 
     print(f'Refining haplotype library: {args.n_sample_rounds} rounds, {args.n_haplotypes} haplotype samples per round')
+    if args.libbest == 1:
+        print('Using best sampling strategy')
 
     # Loop over iterations
     for iteration in range(args.n_sample_rounds):
