@@ -375,7 +375,7 @@ def main():
         # Create haplotype library from high-density genotypes
         haplotype_library = create_haplotype_library(individuals, pedigree.maf)
         refine_library(args, individuals, haplotype_library, pedigree.maf, recombination_rate, error_rate)
-        filepath = 'haplotype_lib.pkl'
+        filepath = 'haplotype_library.pkl'
         print(f'Writing haplotype library to: {filepath}')
         HaplotypeLibrary.save(filepath, haplotype_library)
 
