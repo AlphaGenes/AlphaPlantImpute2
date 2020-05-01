@@ -37,7 +37,7 @@ def getargs():
 
     # Input options
     input_parser = parser.add_argument_group('Input Options')
-    InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'phasefile', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
+    InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
 
     # Library options
     library_parser = parser.add_argument_group('Haplotype Library Options')
@@ -57,11 +57,6 @@ def getargs():
                                   help='Number of rounds of library refinement. Default: 10.')
     algorithm_parser.add_argument('-n_impute_rounds', default=5, required=False, type=int,
                                   help='Number of rounds of imputation. Default: 5.')
-    algorithm_parser.add_argument('-libbest', default=0, required=False, type=int,
-                                  help='(Test) whether to use best haps for library refinement. Default: 0')
-    algorithm_parser.add_argument('-targeted', default=1, required=True, type=int,
-                                  help='Use targeted sampling. Default: 1 (True)')
-
     InputOutput.add_arguments_from_dictionary(algorithm_parser, InputOutput.get_probability_options(), options=['error', 'recombination'])
     
     return InputOutput.parseArgs('alphaplantimpute2', parser)
@@ -129,24 +124,6 @@ def create_haplotype_library(individuals, maf):
     return haplotype_library
 
 
-def create_haplotype_library_from_haplotypes(individuals, n_loci):
-    # NOTE: I can't see why this was needed
-    """Create a haplotype library from the individuals' haplotypes
-    E.g. as read in with -phasefile"""
-    haplotype_library = HaplotypeLibrary.HaplotypeLibrary(n_loci=n_loci)
-    for individual in individuals:
-        paternal_haplotype, maternal_haplotype = individual.haplotypes
-        if individual.inbred:
-            # Only append one haplotype for an inbred/double haploid individual
-            haplotype_library.append(paternal_haplotype, identifier=individual.idx)
-        else:
-            haplotype_library.append(paternal_haplotype, identifier=individual.idx)
-            haplotype_library.append(maternal_haplotype, identifier=individual.idx)
-
-    haplotype_library.freeze()
-    return haplotype_library
-
-
 @jit(nopython=True)
 def correct_haplotypes(paternal_haplotype, maternal_haplotype, true_genotype, maf):
     """Correct paternal and maternal haplotype pair so that they match the true genotype"""
@@ -184,8 +161,6 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
     """Refine haplotype library"""
 
     print(f'Refining haplotype library: {args.n_sample_rounds} rounds, {args.n_haplotypes} haplotype samples per round')
-    if args.libbest == 1:
-        print('Using best sampling strategy')
 
     # Loop over iterations
     for iteration in range(args.n_sample_rounds):
@@ -193,13 +168,10 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
 
         # Generator of subsampled haplotype libraries for ThreadPoolExecutor.map()
         # each library in the generator has the corresponding individual's haplotypes masked out
-        if args.libbest == 1:
-            haplotype_libraries = (haplotype_library.sample_best_individuals(args.n_haplotypes, individual.genotypes, individual.idx) for individual in individuals)
-        else:
-            haplotype_libraries = (haplotype_library.exclude_identifiers_and_sample(individual.idx, args.n_haplotypes) for individual in individuals)
-
+        haplotype_libraries = (haplotype_library.exclude_identifiers_and_sample(individual.idx, args.n_haplotypes)
+                               for individual in individuals)
         # Arguments to pass to sample_haplotypes() via map() and ThreadPoolExecutor.map()
-        sample_haplotypes_args = (individuals, haplotype_libraries, repeat(recombination_rate), repeat(error_rate))  # can move outside loop
+        sample_haplotypes_args = (individuals, haplotype_libraries, repeat(recombination_rate), repeat(error_rate))
 
         # Sample haplotypes for all individuals in the library
         if args.maxthreads == 1:
@@ -255,22 +227,14 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
     # Set all dosages to zero, so they can be incrementally added to
     dosages = np.zeros((len(individuals), n_loci), dtype=np.float32)
 
-    if args.targeted:
-        print('  Using targeted sampling')
-        haplotype_library_sample = (haplotype_library.sample_best_individuals(args.n_haplotypes, individual.genotypes) for individual in individuals)
-
     # Loop over rounds
     for iteration in range(args.n_impute_rounds):
         print(f'  Round {iteration}')
 
-        if args.targeted:
-            # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
-            get_dosages_args = (individuals, haplotype_library_sample, repeat(recombination_rate), repeat(error_rate))
-        else:
-            # Sample the haplotype library for each iteration
-            haplotype_library_sample = haplotype_library.sample(args.n_haplotypes) # should this include the individual being imputed - probably not
-            # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
-            get_dosages_args = (individuals, repeat(haplotype_library_sample), repeat(recombination_rate), repeat(error_rate))
+        # Sample the haplotype library for each iteration
+        haplotype_library_sample = (haplotype_library.sample_best_individuals(args.n_haplotypes, individual.genotypes) for individual in individuals)
+        # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
+        get_dosages_args = (individuals, haplotype_library_sample, repeat(recombination_rate), repeat(error_rate))
 
         # Get dosages for all individuals
         if args.maxthreads == 1:
@@ -419,8 +383,7 @@ def main():
     impute_individuals(args, pedigree, haplotype_library, recombination_rate, error_rate)
 
     # Phasing
-    print('WARNING: not phasing')
-    #phase_individuals(args, pedigree, haplotype_library, pedigree.maf, recombination_rate, error_rate)
+    phase_individuals(args, pedigree, haplotype_library, pedigree.maf, recombination_rate, error_rate)
 
     # Output
     pedigree.writeDosages(args.out + '.dosages')
