@@ -39,6 +39,10 @@ def getargs():
     input_parser = parser.add_argument_group('Input Options')
     InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
 
+    # Library options
+    library_parser = parser.add_argument_group('Haplotype Library Options')
+    library_parser.add_argument('-library', required=False, type=str, help='A haplotype library file in [TBD] format.')
+
     # Multithreading options
     multithread_parser = parser.add_argument_group('Multithreading Options')
     InputOutput.add_arguments_from_dictionary(multithread_parser, InputOutput.get_multithread_options(), options=['maxthreads', 'iothreads'])
@@ -228,9 +232,9 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
         print(f'  Round {iteration}')
 
         # Sample the haplotype library for each iteration
-        haplotype_library_sample = haplotype_library.sample(args.n_haplotypes) # should this include the individual being imputed - probably not
+        haplotype_library_sample = (haplotype_library.sample_best_individuals(args.n_haplotypes, individual.genotypes) for individual in individuals)
         # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
-        get_dosages_args = (individuals, repeat(haplotype_library_sample), repeat(recombination_rate), repeat(error_rate))
+        get_dosages_args = (individuals, haplotype_library_sample, repeat(recombination_rate), repeat(error_rate))
 
         # Get dosages for all individuals
         if args.maxthreads == 1:
@@ -363,10 +367,19 @@ def main():
     recombination_rate = np.full(n_loci, args.recomb/n_loci, dtype=np.float32)
  
     # Library
-    haplotype_library = create_haplotype_library(individuals, pedigree.maf)
-    refine_library(args, individuals, haplotype_library, pedigree.maf, recombination_rate, error_rate)
+    if args.library:
+        # Load haplotype library from file
+        print(f'Loading haplotype library from: {args.library}')
+        haplotype_library = HaplotypeLibrary.load(args.library)
+    else:
+        # Create haplotype library from high-density genotypes
+        haplotype_library = create_haplotype_library(individuals, pedigree.maf)
+        refine_library(args, individuals, haplotype_library, pedigree.maf, recombination_rate, error_rate)
+        filepath = 'haplotype_library.pkl'
+        print(f'Writing haplotype library to: {filepath}')
+        HaplotypeLibrary.save(filepath, haplotype_library)
 
-   # Imputation
+    # Imputation
     impute_individuals(args, pedigree, haplotype_library, recombination_rate, error_rate)
 
     # Phasing

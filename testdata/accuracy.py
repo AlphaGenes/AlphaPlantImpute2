@@ -2,9 +2,10 @@ import pandas as pd
 import numpy as np
 
 # Load files as pandas dataframes
-masked_genotypes = pd.read_csv('masked.genotypes', sep=' ', header=None, index_col=0)
-true_genotypes = pd.read_csv('true.genotypes', sep=' ', header=None, index_col=0)
+masked_genotypes = pd.read_csv('genotypes.txt', sep=' ', header=None, index_col=0)
+true_genotypes = pd.read_csv('true_genotypes.txt', sep=' ', header=None, index_col=0)
 imputed_dosages = pd.read_csv('imputed.dosages', sep=' ', header=None, index_col=0)
+#imputed_dosages = pd.read_csv('imputed.genotypes', sep=' ', header=None, index_col=0)
 
 # Determine which individuals are genotyped at low- and high-density
 low_density = np.mean(masked_genotypes != 9, axis=1) < 0.9
