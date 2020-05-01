@@ -12,4 +12,3 @@ __pycache__/
 .vscode/
 .Rhistory
 *.code-workspace
-testdata/
