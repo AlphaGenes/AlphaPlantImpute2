@@ -57,6 +57,8 @@ def getargs():
                                   help='Number of rounds of library refinement. Default: 10.')
     algorithm_parser.add_argument('-n_impute_rounds', default=5, required=False, type=int,
                                   help='Number of rounds of imputation. Default: 5.')
+    algorithm_parser.add_argument('-n_bins', default=5, required=False, type=int,
+                                  help='Number of bins for targeted haplotype sampling. Default: 5.')
     InputOutput.add_arguments_from_dictionary(algorithm_parser, InputOutput.get_probability_options(), options=['error', 'recombination'])
     
     return InputOutput.parseArgs('alphaplantimpute2', parser)
@@ -232,7 +234,8 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
         print(f'  Round {iteration}')
 
         # Sample the haplotype library for each iteration
-        haplotype_library_sample = (haplotype_library.sample_best_individuals(args.n_haplotypes, individual.genotypes) for individual in individuals)
+        haplotype_library_sample = (haplotype_library.sample_targeted(args.n_haplotypes, individual.genotypes, args.n_bins)
+                                    for individual in individuals)
         # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
         get_dosages_args = (individuals, haplotype_library_sample, repeat(recombination_rate), repeat(error_rate))
 
