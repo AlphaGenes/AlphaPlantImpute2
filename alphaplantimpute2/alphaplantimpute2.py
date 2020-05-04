@@ -39,28 +39,30 @@ def getargs():
     input_parser = parser.add_argument_group('Input Options')
     InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
 
-    # Library options
-    library_parser = parser.add_argument_group('Haplotype Library Options')
-    library_parser.add_argument('-library', required=False, type=str, help='A haplotype library file in [TBD] format.')
-
-    # Multithreading options
-    multithread_parser = parser.add_argument_group('Multithreading Options')
-    InputOutput.add_arguments_from_dictionary(multithread_parser, InputOutput.get_multithread_options(), options=['maxthreads', 'iothreads'])
-
     # Algorithm options
     algorithm_parser = parser.add_argument_group('Algorithm Options')
     algorithm_parser.add_argument('-hd_threshold', default=0.9, required=False, type=float,
-                                  help='Fraction of non-missing markers to classify an individual as high-density. Only high-density individuals make up the haplotype library. Default: 0.9.')
+                                  help='Fraction of non-missing markers required to classify an individual as high-density. '
+                                  'Only high-density individuals are used to build the haplotype library. Default: 0.9.')
     algorithm_parser.add_argument('-n_haplotypes', default=100, required=False, type=int,
-                                  help='Number of haplotypes to sample from the haplotype library in each HMM round. Default: 100.')
+                                  help='Number of haplotypes to sample from the haplotype library. Default: 100.')
     algorithm_parser.add_argument('-n_sample_rounds', default=10, required=False, type=int,
                                   help='Number of rounds of library refinement. Default: 10.')
-    algorithm_parser.add_argument('-n_impute_rounds', default=5, required=False, type=int,
+    algorithm_parser.add_argument('-n_impute_rounds', default=1, required=False, type=int,
                                   help='Number of rounds of imputation. Default: 5.')
     algorithm_parser.add_argument('-n_bins', default=5, required=False, type=int,
                                   help='Number of bins for targeted haplotype sampling. Default: 5.')
     InputOutput.add_arguments_from_dictionary(algorithm_parser, InputOutput.get_probability_options(), options=['error', 'recombination'])
     
+    # Library options
+    library_parser = parser.add_argument_group('Haplotype Library Options')
+    library_parser.add_argument('-library', required=False, type=str, help='A haplotype library file in [TBD] format. '
+                                'Read the haplotype library from file rather than building it from high-density individuals.')
+
+    # Multithreading options
+    multithread_parser = parser.add_argument_group('Multithreading Options')
+    InputOutput.add_arguments_from_dictionary(multithread_parser, InputOutput.get_multithread_options(), options=['maxthreads', 'iothreads'])
+
     return InputOutput.parseArgs('alphaplantimpute2', parser)
 
 
