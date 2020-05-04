@@ -273,16 +273,16 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
 def phase_individuals(args, pedigree, haplotype_library, maf, recombination_rate, error_rate):
     """Phase all individuals in the pedigree"""
 
-    n_loci = pedigree.nLoci
     print(f'Phasing individuals: {args.n_haplotypes} haplotype samples')
 
     # Iterate over all individuals in the Pedigree() object
     individuals = pedigree
 
     # Sample the haplotype library
-    haplotype_library_sample = haplotype_library.sample(args.n_haplotypes) # should this include the individual being imputed - probably not
+    haplotype_library_sample = (haplotype_library.sample_targeted(args.n_haplotypes, individual.genotypes, args.n_bins)
+                                for individual in individuals)
     # Arguments to pass to get_phase() via map() and ThreadPoolExecutor.map()
-    get_phase_args = (individuals, repeat(haplotype_library_sample), repeat(recombination_rate), repeat(error_rate))
+    get_phase_args = (individuals, haplotype_library_sample, repeat(recombination_rate), repeat(error_rate))
 
     # Get dosages for all individuals
     if args.maxthreads == 1:
