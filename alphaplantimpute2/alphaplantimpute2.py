@@ -164,7 +164,8 @@ def sample_haplotypes(individual, haplotype_library, recombination_rate, error_r
 def refine_library(args, individuals, haplotype_library, maf, recombination_rate, error_rate):
     """Refine haplotype library"""
 
-    print(f'Refining haplotype library: {args.n_sample_rounds} rounds, {args.n_haplotypes} haplotype samples per round')
+    rounds_str = 'rounds' if args.n_sample_rounds > 1 else 'round'
+    print(f'Refining haplotype library: {args.n_sample_rounds} {rounds_str}, {args.n_haplotypes} haplotype samples per round')
 
     # Loop over iterations
     for iteration in range(args.n_sample_rounds):
@@ -223,7 +224,8 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
     """Impute all individuals in the pedigree"""
 
     n_loci = pedigree.nLoci
-    print(f'Imputing individuals: {args.n_impute_rounds} rounds, {args.n_haplotypes} haplotype samples per round')
+    rounds_str = 'rounds' if args.n_impute_rounds > 1 else 'round'
+    print(f'Imputing individuals: {args.n_impute_rounds} {rounds_str}, {args.n_haplotypes} haplotype samples per round')
 
     # Iterate over all individuals in the Pedigree() object
     individuals = pedigree
