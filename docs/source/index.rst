@@ -69,7 +69,39 @@ Input options
 |program| supports genotype files in the AlphaGenes format as specified by the ``-genotypes`` option. A pedigree file can be supplied using the ``-pedigree`` option. 
 
  
-Multithreading options 
+Algorithm options 
+------------------------
+::
+
+      -hd_threshold HD_THRESHOLD
+                            Fraction of non-missing markers required to classify
+                            an individual as high-density. Only high-density
+                            individuals are used to build the haplotype library.
+                            Default: 0.9.
+      -n_haplotypes N_HAPLOTYPES
+                            Number of haplotypes to sample from the haplotype
+                            library. Default: 100.
+      -n_sample_rounds N_SAMPLE_ROUNDS
+                            Number of rounds of library refinement. Default: 10.
+      -n_impute_rounds N_IMPUTE_ROUNDS
+                            Number of rounds of imputation. Default: 1.
+      -n_bins N_BINS        Number of bins for targeted haplotype sampling.
+                            Default: 5.
+      -error ERROR          Genotyping error rate. Default: 0.01.
+      -recomb RECOMB        Recombination rate per chromosome. Default: 1.
+
+
+Haplotype library options
+-------------------------
+Note: haplotype library functionality is under development. These options are likely to change considerably in future versions.
+::
+
+      -library LIBRARY      A haplotype library file in [TBD] format. Read the
+                            haplotype library from file rather than building it
+                            from high-density individuals.
+
+
+Multithreading options
 ------------------------
 ::
 
@@ -82,26 +114,10 @@ Multithreading options
 |program| supports multithreading for running the analysis, and for reading in and writing out (large amounts of) data. The parameter ``-maxthreads`` controls the number of threads used by the analysis. The parameter ``-iothreads`` controls the number of threads used for input and output — setting this option to a value greater than 1 is only recommended for very large files (>10,000 individuals).
 
 
-Algorithm options 
-------------------------
-::
+Algorithm summary
+~~~~~~~~~~~~~~~~~
 
-      -hd_threshold HD_THRESHOLD
-                            Fraction of non-missing markers to classify an
-                            individual as high-density. Only high-density
-                            individuals make up haplotype library. Default: 0.9.
-      -n_haplotypes N_HAPLOTYPES
-                            Number of haplotypes to sample from the haplotype
-                            library in each HMM round. Default: 100.
-      -n_sample_rounds N_SAMPLE_ROUNDS
-                            Number of rounds of library refinement. Default: 10.
-      -n_impute_rounds N_IMPUTE_ROUNDS
-                            Number of rounds of imputation. Default: 5.
-      -error ERROR          Genotyping error rate. Default: 0.01.
-      -recomb RECOMB        Recombination rate per chromosome. Default: 1.
-
-
-These options control the algorithm that |program| uses. The algorithm performs the following steps:  
+|program| performs the following steps:  
 
 Create a haplotype library
     Pairs of haplotypes are generated from the genotypes of high-density individuals. High-density individuals are those with a fraction of non-missing markers greater than a given threshold (``-hd_threshold``). Homozygous loci are de-facto phased; heterozygous loci are randomly assigned with equal probability and missing loci are randomly assigned according to minor allele frequency.
@@ -110,10 +126,10 @@ Refine the haplotype library
     Each haplotype in the library is refined using a hidden Markov model. The hidden states (at each locus) are either haplotypes in the library (for inbred/double haploid individuals), or pairs of haplotypes (for outbred, diploid individuals). The model randomly generates a haplotype (inbred/double haploid) or pair of haplotypes (outbred, diploid) according to the HMM probabilities. The number of haplotypes considered by the HMM is reduced by randomly sampling a number of haplotypes (``-n_haplotypes``). This number is a trade-off between higher imputation accuracy (higher numbers of haplotypes) and faster computation time (lower numbers). Once each haplotype has been generated, the process iterates for a number of rounds (``-n_sample_rounds``) to refine the haplotypes. A small number of rounds (e.g. 10) is usually being sufficient to accurately estimate the haplotypes. This step, in effect, phases the high-density individuals. 
 
 Impute individuals
-    Each individual's genotype is imputed using the same hidden Markov Model and haplotypes in the refined library as hidden states. Again, the number of haplotypes considered is reduced by randomly sampling (``-n_haplotypes``) and the process repeats for a number of rounds (``-n_impute_rounds``), updating the average genotype dosages each time. The imputed genotypes are simply the integer-rounded values of the dosages.
+    Each individual's genotype is imputed using the same hidden Markov Model with haplotypes from the refined library as hidden states. The number of haplotypes considered (``-n_haplotypes``) is reduced by targeted sampling of haplotypes from the library. Targeted sampling chooses haplotypes that have the fewest opposite homozygous markers compared to the focal individual within a bin of markers. The number of bins the chromosome is divided into is specified by ``-n_bins``. Haplotypes are randomly sampled in the case where many haplotypes have the same number of opposite homozygous markers. The imputation process repeats for a number of rounds (``-n_impute_rounds``), updating the average genotype dosages each time. The imputed genotypes calculated by taking the integer-rounded values of the dosages.
 
 Phase individuals
-    Each individual is phased using the same hidden Markov Model and the Viterbi algorithm. Again, the number of haplotypes considered is reduced by randomly sampling (``-n_haplotypes``), but only one round is necessary as the Viterbi algorithm finds the *most likely* phased haplotype. Any inconsistencies between imputed genotype and imputed phase are corrected by modifying the haplotypes.
+    Each individual is phased using the same hidden Markov Model and the Viterbi algorithm. The number of haplotypes considered (``-n_haplotypes``) is reduced by targeted sampling, but only one round is necessary as the Viterbi algorithm finds the *most likely* phased haplotype. Any inconsistencies between imputed genotype and imputed phase are corrected by modifying the haplotypes.
 
 Input file formats
 ~~~~~~~~~~~~~~~~~~
