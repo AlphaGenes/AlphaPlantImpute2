@@ -300,6 +300,7 @@ def phase_individuals(args, pedigree, haplotype_library, maf, recombination_rate
         haplotypes = individual.imputed_haplotypes
         if individual.inbred:
             correct_haplotypes(haplotypes, haplotypes, individual.genotypes, maf)
+            haplotypes = np.vstack([haplotypes, haplotypes])
         else:
             correct_haplotypes(haplotypes[0], haplotypes[1], individual.genotypes, maf)
         # Copy phased haplotypes into `haplotypes` member variable ready for
