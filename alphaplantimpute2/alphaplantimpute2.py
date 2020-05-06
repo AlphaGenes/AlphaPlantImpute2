@@ -3,6 +3,7 @@
 import argparse
 import concurrent.futures
 import random
+import sys
 from itertools import repeat
 import numpy as np
 from numba import jit
@@ -369,6 +370,13 @@ def main():
     pedigree.set_high_density()
     individuals = high_density_individuals(pedigree)
     print(f'Read in {len(pedigree)} individuals, {len(individuals)} are at high-density (threshold {args.hd_threshold})')
+
+    # Error if no high-density individuals
+    if len(individuals) == 0:
+        print(f'ERROR: zero individuals genotyped at high-density\n'
+        'Try reducing the high-density threshold (-hd_threshold), so that more individuals are classed as high-density\n'
+        'Exiting...')
+        sys.exit(2)
 
     # Probabilistic rates
     error_rate = np.full(n_loci, args.error, dtype=np.float32)
