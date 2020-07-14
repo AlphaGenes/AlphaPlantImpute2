@@ -8,7 +8,7 @@ from itertools import repeat
 import numpy as np
 from numba import jit
 from pkg_resources import get_distribution, DistributionNotFound
-from . tinyhouse import HaploidHMM, DiploidHMM, InputOutput, Pedigree, HaplotypeLibrary
+from . tinyhouse import CombinedHMM, InputOutput, Pedigree, HaplotypeLibrary, ProbMath
 
 
 # Get version
@@ -148,8 +148,7 @@ def correct_haplotypes(paternal_haplotype, maternal_haplotype, true_genotype, ma
     maternal_haplotype[mask] = maternal
 
 
-@profile
-def sample_haplotypes(individual, haplotype_library, recombination_rate, error_rate):
+def sample_haplotypes(model, individual, haplotype_library, recombination_rate, error_rate):
     """Sample haplotypes for an individual using haplotype library 'haplotype_library'
     Note: the supplied haplotype_library should *not* contain a copy of the individual's haplotypes"""
 
@@ -157,12 +156,13 @@ def sample_haplotypes(individual, haplotype_library, recombination_rate, error_r
         HaploidHMM.haploidHMM(individual, haplotype_library,
                               error_rate, recombination_rate, calling_method='sample')
     else:
-        DiploidHMM.diploidHMM(individual, haplotype_library, haplotype_library,
-                              error_rate, recombination_rate, calling_method='sample', use_called_haps=False)
+        genotype_probabilities = model.run_HMM(individual=individual, haplotype_library=haplotype_library, algorithm='sample')
+        values = ProbMath.call_genotype_probs(genotype_probabilities, calling_threshold=0.1)
+        individual.imputed_haplotypes = np.array(values.haplotypes)
     return individual
 
 
-def refine_library(args, individuals, haplotype_library, maf, recombination_rate, error_rate):
+def refine_library(model, args, individuals, haplotype_library, maf, recombination_rate, error_rate):
     """Refine haplotype library"""
 
     rounds_str = 'rounds' if args.n_sample_rounds > 1 else 'round'
@@ -177,7 +177,7 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
         haplotype_libraries = (haplotype_library.exclude_identifiers_and_sample(individual.idx, args.n_haplotypes)
                                for individual in individuals)
         # Arguments to pass to sample_haplotypes() via map() and ThreadPoolExecutor.map()
-        sample_haplotypes_args = (individuals, haplotype_libraries, repeat(recombination_rate), repeat(error_rate))
+        sample_haplotypes_args = (repeat(model), individuals, haplotype_libraries, repeat(recombination_rate), repeat(error_rate))
 
         # Sample haplotypes for all individuals in the library
         if args.maxthreads == 1:
@@ -199,14 +199,15 @@ def refine_library(args, individuals, haplotype_library, maf, recombination_rate
             haplotype_library.update(haplotypes, individual.idx)
 
 
-def get_dosages(individual, haplotype_library, recombination_rate, error_rate):
+def get_dosages(model, individual, haplotype_library, recombination_rate, error_rate):
     """Get dosages for an individual
     HaploidHMM.haploidHMM() and DiploidHMM.diploidHMM() set the individual's dosage member variable"""
     if individual.inbred:
         HaploidHMM.haploidHMM(individual, haplotype_library, error_rate, recombination_rate, calling_method='dosages')
     else:
-        DiploidHMM.diploidHMM(individual, haplotype_library, haplotype_library, error_rate, recombination_rate,
-                              calling_method='dosages', use_called_haps=False)
+        genotype_probabilities = model.run_HMM(individual=individual, haplotype_library=haplotype_library, algorithm='marginalize')
+        ProbMath.set_from_genotype_probs(individual, geno_probs=genotype_probabilities,
+                                         calling_threshold=0.1, set_genotypes=True, set_dosages=True, set_haplotypes=True)
     return individual
 
 
@@ -221,7 +222,7 @@ def get_phase(individual, haplotype_library, recombination_rate, error_rate):
     return individual
 
 
-def impute_individuals(args, pedigree, haplotype_library, recombination_rate, error_rate):
+def impute_individuals(model, args, pedigree, haplotype_library, recombination_rate, error_rate):
     """Impute all individuals in the pedigree"""
 
     n_loci = pedigree.nLoci
@@ -242,7 +243,7 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
         haplotype_library_sample = (haplotype_library.sample_targeted(args.n_haplotypes, individual.genotypes, args.n_bins)
                                     for individual in individuals)
         # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
-        get_dosages_args = (individuals, haplotype_library_sample, repeat(recombination_rate), repeat(error_rate))
+        get_dosages_args = (repeat(model), individuals, haplotype_library_sample, repeat(recombination_rate), repeat(error_rate))
 
         # Get dosages for all individuals
         if args.maxthreads == 1:
@@ -267,7 +268,7 @@ def impute_individuals(args, pedigree, haplotype_library, recombination_rate, er
             individual.genotypes = 2*np.int8(np.round(dosages[i]))
             individual.dosages = 2*dosages[i]
         else:
-            individual.genotypes = np.int8(np.round(dosages[i]))
+            # individual.genotypes = np.int8(np.round(dosages[i]))
             individual.dosages = dosages[i]
 
 
@@ -361,6 +362,10 @@ def main():
     InputOutput.readInPedigreeFromInputs(pedigree, args, genotypes=True, haps=False, reads=False)
     n_loci = pedigree.nLoci
 
+    # Construct empty haplotypes/genotypes if not read in from file
+    for individual in pedigree:
+        individual.constructInfo(n_loci, genotypes=True, haps=True)
+
     # Handle any inbred/double haploid individuals
     handle_inbreds(pedigree)
 
@@ -382,6 +387,11 @@ def main():
     error_rate = np.full(n_loci, args.error, dtype=np.float32)
     recombination_rate = np.full(n_loci, args.recomb/n_loci, dtype=np.float32)
  
+    # Model
+    model = CombinedHMM.DiploidMarkovModel(n_loci, error_rate, recombination_rate)
+    #model = CombinedHMM.HaploidMarkovModel(n_loci, error_rate, recombination_rate)
+
+
     # Library
     if args.library:
         # Load haplotype library from file
@@ -390,21 +400,21 @@ def main():
     else:
         # Create haplotype library from high-density genotypes
         haplotype_library = create_haplotype_library(individuals, pedigree.maf)
-        refine_library(args, individuals, haplotype_library, pedigree.maf, recombination_rate, error_rate)
+        refine_library(model, args, individuals, haplotype_library, pedigree.maf, recombination_rate, error_rate)
         filepath = 'haplotype_library.pkl'
         print(f'Writing haplotype library to: {filepath}')
         HaplotypeLibrary.save(filepath, haplotype_library)
 
     # Imputation
-    impute_individuals(args, pedigree, haplotype_library, recombination_rate, error_rate)
+    impute_individuals(model, args, pedigree, haplotype_library, recombination_rate, error_rate)
 
     # Phasing
-    phase_individuals(args, pedigree, haplotype_library, pedigree.maf, recombination_rate, error_rate)
+    # phase_individuals(args, pedigree, haplotype_library, pedigree.maf, recombination_rate, error_rate)
 
     # Output
     pedigree.writeDosages(args.out + '.dosages')
     pedigree.writeGenotypes(args.out + '.genotypes')
-    pedigree.writePhase(args.out + '.phase')
+    # pedigree.writePhase(args.out + '.phase')
 
 if __name__ == "__main__":
     main()
