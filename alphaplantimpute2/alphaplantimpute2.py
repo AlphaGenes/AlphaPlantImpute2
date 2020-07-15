@@ -47,6 +47,10 @@ def getargs():
                                   'Only high-density individuals are used to build the haplotype library. Default: 0.9.')
     algorithm_parser.add_argument('-n_haplotypes', default=100, required=False, type=int,
                                   help='Number of haplotypes to sample from the haplotype library. Default: 100.')
+    algorithm_parser.add_argument('-haploid', action='store_true', required=False, help='Run using a haploid HMM instead of the default diploid HMM.')
+    algorithm_parser.add_argument('-joint', action='store_true', required=False, help='Run using a joint HMM instead of the default diploid HMM.')
+    algorithm_parser.add_argument('-calling_threshold', default=0.1, required=False, type=float, help='Genotype calling threshold. '
+                                  'Use a value less than 0.25 for best-guess genotypes. Default: 0.1.')
     algorithm_parser.add_argument('-n_sample_rounds', default=10, required=False, type=int,
                                   help='Number of rounds of library refinement. Default: 10.')
     algorithm_parser.add_argument('-n_impute_rounds', default=1, required=False, type=int,
@@ -191,11 +195,18 @@ def refine_library(model, args, individuals, haplotype_library, maf, recombinati
         # Update library
         for individual in results:
             # Use the input genotype (as read in from data) as the 'true' genotype to correct the haplotypes
+            # print(type(model).__name__)
+            # print(isinstance(model, CombinedHMM.DiploidMarkovModel))
             haplotypes = individual.imputed_haplotypes
             if individual.inbred:
                 correct_haplotypes(haplotypes, haplotypes, individual.genotypes, maf)
             else:
-                correct_haplotypes(haplotypes[0], haplotypes[1], individual.genotypes, maf)
+                if haplotypes.ndim == 1:  # better to inspect model
+                    correct_haplotypes(haplotypes, haplotypes, individual.genotypes, maf)
+                elif haplotypes.ndim == 2:
+                    correct_haplotypes(haplotypes[0], haplotypes[1], individual.genotypes, maf)
+                else:
+                    raise RuntimeError('Unexpected dimension for haplotype array')
             haplotype_library.update(haplotypes, individual.idx)
 
 
@@ -386,11 +397,14 @@ def main():
     # Probabilistic rates
     error_rate = np.full(n_loci, args.error, dtype=np.float32)
     recombination_rate = np.full(n_loci, args.recomb/n_loci, dtype=np.float32)
- 
-    # Model
-    model = CombinedHMM.DiploidMarkovModel(n_loci, error_rate, recombination_rate)
-    #model = CombinedHMM.HaploidMarkovModel(n_loci, error_rate, recombination_rate)
 
+    # Model
+    if args.haploid:
+        model = CombinedHMM.HaploidMarkovModel(n_loci, error_rate, recombination_rate)
+    elif args.joint:
+        model = CombinedHMM.JointMarkovModel(n_loci, error_rate, recombination_rate)
+    else:
+        model = CombinedHMM.DiploidMarkovModel(n_loci, error_rate, recombination_rate)
 
     # Library
     if args.library:
