@@ -325,7 +325,7 @@ def set_seed(args):
 def handle_inbreds(pedigree):
     """Handle any inbred/double haploid individuals: set any heterozygous loci to missing
     and warn"""
-    threshold = 0.3  # fraction of heterozygous loci
+    threshold = 0.0  # fraction of heterozygous loci
     # Set heterozygous loci to missing
     for individual in pedigree: #inbred_individuals:
         heterozygous_loci = (individual.genotypes == 1)
