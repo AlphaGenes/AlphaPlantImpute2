@@ -34,11 +34,14 @@ def getargs():
 
     # Core options
     core_parser = parser.add_argument_group('Core Options')
+    core_parser.add_argument('-createlib', action='store_true', required=False, help='Create a haplotype library.')
+    core_parser.add_argument('-impute', action='store_true', required=False, help='Impute individuals.')
     core_parser.add_argument('-out', required=True, type=str, help='The output file prefix.')
 
     # Input options
     input_parser = parser.add_argument_group('Input Options')
     InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
+#    input_parser.add_argument('-founder', default=None, required=False, type=str, help='A file that gives the founder individuals for each individual.')
 
     # Algorithm options
     algorithm_parser = parser.add_argument_group('Algorithm Options')
@@ -346,6 +349,19 @@ def main():
     # Handle command-line arguments
     args = getargs()
 
+    # Argument checks
+    if not (args.createlib or args.impute):
+        print('ERROR: one of -createlib or -impute needs to be specified\nExiting...')
+        sys.exit(2)
+    elif args.createlib and args.impute:
+        print('ERROR: only one of -createlib or -impute should be specified\nExiting...')
+        sys.exit(2)
+
+    # Some (other) arguments don't make sense with -impute and -createlib: check and warn user
+    # -hd_threshold with -impute, but -hd_threshold is set by default
+    # -n_sample_rounds with -impute, also set by default
+    # -n_bins only used in imputation
+
     # Set random seed
     set_seed(args)
 
@@ -369,18 +385,11 @@ def main():
     individuals = high_density_individuals(pedigree)
     print(f'Read in {len(pedigree)} individuals, {len(individuals)} are at high-density (threshold {args.hd_threshold})')
 
-    # Error if no high-density individuals
-    if len(individuals) == 0:
-        print(f'ERROR: zero individuals genotyped at high-density\n'
-        'Try reducing the high-density threshold (-hd_threshold), so that more individuals are classed as high-density\n'
-        'Exiting...')
-        sys.exit(2)
-
     # Probabilistic rates
     error_rate = np.full(n_loci, args.error, dtype=np.float32)
     recombination_rate = np.full(n_loci, args.recomb/n_loci, dtype=np.float32)
 
-    # Model
+    # Choose hidden Markov model
     if args.haploid:
         model = CombinedHMM.HaploidMarkovModel(n_loci, error_rate, recombination_rate)
     elif args.joint:
@@ -388,28 +397,35 @@ def main():
     else:
         model = CombinedHMM.DiploidMarkovModel(n_loci, error_rate, recombination_rate)
 
-    # Library
+    # Load library
     if args.library:
-        # Load haplotype library from file
         print(f'Loading haplotype library from: {args.library}')
         haplotype_library = HaplotypeLibrary.load(args.library)
-    else:
-        # Create haplotype library from high-density genotypes
+
+    # Create haplotype library from high-density genotypes
+    if args.createlib:
+
+        # Error if no high-density individuals
+        if len(individuals) == 0:
+            print(f'ERROR: zero individuals genotyped at high-density\n'
+                  'Try reducing the high-density threshold (-hd_threshold), so that more individuals are classed as high-density\n'
+                  'Exiting...')
+            sys.exit(2)
+
         haplotype_library = create_haplotype_library(args, individuals, pedigree.maf)
         refine_library(model, args, individuals, haplotype_library, pedigree.maf)
-        filepath = 'haplotype_library.pkl'
+        filepath = args.out + '.pkl'
         print(f'Writing haplotype library to: {filepath}')
         HaplotypeLibrary.save(filepath, haplotype_library)
 
     # Imputation
-    impute_individuals(model, args, pedigree, haplotype_library)
+    if args.impute:
+        impute_individuals(model, args, pedigree, haplotype_library)
+        pedigree.writeDosages(args.out + '.dosages')
+        pedigree.writeGenotypes(args.out + '.genotypes')
 
     # Phasing
     # phase_individuals(args, pedigree, haplotype_library, pedigree.maf, recombination_rate, error_rate)
-
-    # Output
-    pedigree.writeDosages(args.out + '.dosages')
-    pedigree.writeGenotypes(args.out + '.genotypes')
     # pedigree.writePhase(args.out + '.phase')
 
 if __name__ == "__main__":
