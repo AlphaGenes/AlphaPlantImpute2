@@ -116,13 +116,8 @@ def generate_haplotypes(genotype, maf):
     return p_hap, m_hap
 
 
-def create_haplotype_library(args, individuals, maf):
-    """Create a haplotype library from list of individuals
-    The population's minor allele frequency (maf) is used to
-    randomly create alleles at missing loci"""
-
-    n_loci = len(maf)
-    haplotype_library = HaplotypeLibrary.HaplotypeLibrary(n_loci=n_loci)
+def append_random_haplotypes(haplotype_library, args, individuals, maf):
+    """Append randomly phased haplotypes to haplotype_library"""
     for individual in individuals:
         paternal_haplotype, maternal_haplotype = generate_haplotypes(individual.genotypes, maf)
         if args.haploid:
@@ -382,8 +377,8 @@ def main():
     pedigree.setMaf()
     pedigree.high_density_threshold = args.hd_threshold
     pedigree.set_high_density()
-    individuals = high_density_individuals(pedigree)
-    print(f'Read in {len(pedigree)} individuals, {len(individuals)} are at high-density (threshold {args.hd_threshold})')
+    hd_individuals = high_density_individuals(pedigree)
+    print(f'Read in {len(pedigree)} individuals, {len(hd_individuals)} are at high-density (threshold {args.hd_threshold})')
 
     # Probabilistic rates
     error_rate = np.full(n_loci, args.error, dtype=np.float32)
@@ -397,26 +392,57 @@ def main():
     else:
         model = CombinedHMM.DiploidMarkovModel(n_loci, error_rate, recombination_rate)
 
-    # Load library
+    # Load library if one has been provided
     if args.library:
-        print(f'Loading haplotype library from: {args.library}')
+        print(f'Loading haplotype library: {args.library}')
         haplotype_library = HaplotypeLibrary.load(args.library)
 
-    # Create haplotype library from high-density genotypes
-    if args.createlib:
 
-        # Error if no high-density individuals
-        if len(individuals) == 0:
+    # Create or update haplotype library from high-density genotypes
+    if args.createlib:
+        # Error if there are no high-density individuals
+        if len(hd_individuals) == 0:
             print(f'ERROR: zero individuals genotyped at high-density\n'
                   'Try reducing the high-density threshold (-hd_threshold), so that more individuals are classed as high-density\n'
                   'Exiting...')
             sys.exit(2)
 
-        haplotype_library = create_haplotype_library(args, individuals, pedigree.maf)
-        refine_library(model, args, individuals, haplotype_library, pedigree.maf)
+        # Update an existing library with new genotypes
+        if args.library:
+            print(f"Updating {args.library} with {len(hd_individuals)} "
+                  f"high-density genotypes from {' '.join(args.genotypes)}")
+
+            # Handle any genotypes already present in the haplotype library
+            duplicate_identifiers = (set(haplotype_library.get_identifiers()) &
+                                     set(individual.idx for individual in hd_individuals))
+            if len(duplicate_identifiers) != 0:
+                print(f'WARNING: {len(duplicate_identifiers)} genotypes are already present '
+                      f'in haplotype library {args.library}: these will be ignored')
+                print(f"  Ignored genotype identifiers are:\n"
+                      f"  {' '.join(sorted(duplicate_identifiers))}")
+                # Ignore the genotypes
+                hd_individuals = [individual for individual in hd_individuals
+                                  if individual.idx not in duplicate_identifiers]
+
+            haps = haplotype_library._haplotypes.copy()  # Testing, remove
+            haplotype_library.unfreeze()
+        else:
+            # Create empty haplotype library
+            haplotype_library = HaplotypeLibrary.HaplotypeLibrary(n_loci=n_loci)
+
+        append_random_haplotypes(haplotype_library, args, hd_individuals, pedigree.maf)
+        refine_library(model, args, hd_individuals, haplotype_library, pedigree.maf)
         filepath = args.out + '.pkl'
         print(f'Writing haplotype library to: {filepath}')
         HaplotypeLibrary.save(filepath, haplotype_library)
+
+        # Test block, remove
+        if args.library:
+            print(haps.shape)
+            print(haplotype_library._haplotypes.shape)
+            print(np.all(haps == haplotype_library._haplotypes[:100]))
+
+
 
     # Imputation
     if args.impute:
