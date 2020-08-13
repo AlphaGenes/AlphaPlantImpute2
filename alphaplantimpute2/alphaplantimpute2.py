@@ -41,13 +41,15 @@ def getargs():
     # Input options
     input_parser = parser.add_argument_group('Input Options')
     InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
+    input_parser.add_argument('-plink', default=None, required=False, type=str, nargs='*', help='A file in PLINK plain text format (.ped)')
+
 #    input_parser.add_argument('-founder', default=None, required=False, type=str, help='A file that gives the founder individuals for each individual.')
 
     # Algorithm options
     algorithm_parser = parser.add_argument_group('Algorithm Options')
-    algorithm_parser.add_argument('-hd_threshold', default=0.9, required=False, type=float,
+    algorithm_parser.add_argument('-hd_threshold', default=0.0, required=False, type=float,
                                   help='Fraction of non-missing markers required to classify an individual as high-density. '
-                                  'Only high-density individuals are used to build the haplotype library. Default: 0.9.')
+                                  'Only high-density individuals are used to build the haplotype library. Default: 0.0.')
     algorithm_parser.add_argument('-n_haplotypes', default=100, required=False, type=int,
                                   help='Number of haplotypes to sample from the haplotype library. Default: 100.')
     algorithm_parser.add_argument('-haploid', action='store_true', required=False, help='Run using a haploid HMM instead of the default diploid HMM.')
@@ -363,13 +365,19 @@ def main():
     # Read data
     pedigree = Pedigree.Pedigree()
     InputOutput.readInPedigreeFromInputs(pedigree, args, genotypes=True, haps=False, reads=False)
+
+    print('Test')
+    print(len(pedigree), pedigree.nLoci)
+    for i in pedigree:
+        print(i.idx, i.genotypes)
+    #exit(2)
     n_loci = pedigree.nLoci
 
     # Construct empty haplotypes/genotypes member variables if not read in from file
     for individual in pedigree:
         individual.constructInfo(n_loci, genotypes=False, haps=True)
 
-    # Handle any inbred/double haploid individuals
+    # Handle inbred/double haploid individuals
     if args.haploid:
         handle_inbreds(pedigree)
 
@@ -424,7 +432,7 @@ def main():
                 hd_individuals = [individual for individual in hd_individuals
                                   if individual.idx not in duplicate_identifiers]
 
-            haps = haplotype_library._haplotypes.copy()  # Testing, remove
+            #haps = haplotype_library._haplotypes.copy()  # Testing, remove
             haplotype_library.unfreeze()
         else:
             # Create empty haplotype library
@@ -435,6 +443,9 @@ def main():
         filepath = args.out + '.pkl'
         print(f'Writing haplotype library to: {filepath}')
         HaplotypeLibrary.save(filepath, haplotype_library)
+
+
+
 
         # Test block, remove
         if args.library:
