@@ -335,6 +335,24 @@ def handle_inbreds(pedigree):
             individual.genotypes[heterozygous_loci] = 9
 
 
+def load_library(args):
+    """Read in library as PLINK plain text"""
+    print(f'Loading haplotype library: {args.library}')
+    library = Pedigree.Pedigree()
+    library.readInPlinkPlainTxt(args.library, args.startsnp, args.stopsnp, haps=True)
+    haplotype_library = HaplotypeLibrary.HaplotypeLibrary(library.nLoci)
+    for individual in library:
+        for haplotype in individual.haplotypes:
+            haplotype_library.append(haplotype, individual.idx)
+    haplotype_library.freeze()
+
+    return haplotype_library
+    # Old code
+    # print(f'Loading haplotype library: {library_file}')
+    # haplotype_library = HaplotypeLibrary.load(args.library)
+
+
+
 @profile
 def main():
     """Main execution code"""
@@ -365,12 +383,6 @@ def main():
     # Read data
     pedigree = Pedigree.Pedigree()
     InputOutput.readInPedigreeFromInputs(pedigree, args, genotypes=True, haps=False, reads=False)
-
-    print('Test')
-    print(len(pedigree), pedigree.nLoci)
-    for i in pedigree:
-        print(i.idx, i.genotypes)
-    #exit(2)
     n_loci = pedigree.nLoci
 
     # Construct empty haplotypes/genotypes member variables if not read in from file
@@ -402,9 +414,9 @@ def main():
 
     # Load library if one has been provided
     if args.library:
-        print(f'Loading haplotype library: {args.library}')
-        haplotype_library = HaplotypeLibrary.load(args.library)
-
+        haplotype_library = load_library(args)
+        print(haplotype_library)
+    sys.exit(2)
 
     # Create or update haplotype library from high-density genotypes
     if args.createlib:
