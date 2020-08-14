@@ -346,7 +346,7 @@ def load_library(args):
             haplotype_library.append(haplotype, individual.idx)
     haplotype_library.freeze()
 
-    return haplotype_library
+    return haplotype_library, library
     # Old code
     # print(f'Loading haplotype library: {library_file}')
     # haplotype_library = HaplotypeLibrary.load(args.library)
@@ -414,8 +414,12 @@ def main():
 
     # Load library if one has been provided
     if args.library:
-        haplotype_library = load_library(args)
+        haplotype_library, lib_ped = load_library(args)
         print(haplotype_library)
+
+        lib_ped.writePhasePlink('out.ped')
+
+
     sys.exit(2)
 
     # Create or update haplotype library from high-density genotypes
