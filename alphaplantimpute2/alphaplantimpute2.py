@@ -336,21 +336,36 @@ def handle_inbreds(pedigree):
 
 
 def load_library(args):
-    """Read in library as PLINK plain text"""
+    """Read in library from PLINK plain text
+    Returns a HaplotypeLibrary() and allele coding array"""
     print(f'Loading haplotype library: {args.library}')
     library = Pedigree.Pedigree()
     library.readInPlinkPlainTxt(args.library, args.startsnp, args.stopsnp, haps=True)
+    print(f'Haplotype library contains {len(library)} individuals with {library.nLoci} markers')
     haplotype_library = HaplotypeLibrary.HaplotypeLibrary(library.nLoci)
     for individual in library:
         for haplotype in individual.haplotypes:
             haplotype_library.append(haplotype, individual.idx)
     haplotype_library.freeze()
 
-    return haplotype_library, library
-    # Old code
-    # print(f'Loading haplotype library: {library_file}')
-    # haplotype_library = HaplotypeLibrary.load(args.library)
+    return haplotype_library, library.allele_coding
 
+
+def write_library(filename, library, allele_coding):
+    """Write out haplotype library, first converting to a Pedigree object"""
+    # Construct pedigree
+    pedigree = Pedigree.Pedigree()
+    pedigree.nLoci = library._n_loci
+    pedigree.allele_coding = allele_coding
+    for idx, haplotype in library:
+        individual = pedigree.getIndividual(idx)
+        if individual.haplotypes is None:
+            individual.haplotypes = haplotype
+        else:
+            individual.haplotypes = np.vstack([individual.haplotypes, haplotype])
+    # Write out
+    print(f'Writing haplotype library to {filename}')
+    pedigree.writePhasePlink(filename)
 
 
 @profile
@@ -379,6 +394,13 @@ def main():
 
     # Set random seed
     set_seed(args)
+
+    # Load library if one has been provided
+    if args.library:
+        haplotype_library, allele_coding = load_library(args)
+
+        write_library('out.ped', haplotype_library, allele_coding)
+
 
     # Read data
     pedigree = Pedigree.Pedigree()
@@ -412,12 +434,6 @@ def main():
     else:
         model = CombinedHMM.DiploidMarkovModel(n_loci, error_rate, recombination_rate)
 
-    # Load library if one has been provided
-    if args.library:
-        haplotype_library, lib_ped = load_library(args)
-        print(haplotype_library)
-
-        lib_ped.writePhasePlink('out.ped')
 
 
     sys.exit(2)
