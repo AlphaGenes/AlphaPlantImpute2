@@ -460,17 +460,6 @@ def main():
         print(f'Writing haplotype library to: {filepath}')
         HaplotypeLibrary.save(filepath, haplotype_library)
 
-
-
-
-        # Test block, remove
-        if args.library:
-            print(haps.shape)
-            print(haplotype_library._haplotypes.shape)
-            print(np.all(haps == haplotype_library._haplotypes[:100]))
-
-
-
     # Imputation
     if args.impute:
         impute_individuals(model, args, pedigree, haplotype_library)
