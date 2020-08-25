@@ -44,6 +44,9 @@ def getargs():
     InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
     input_parser.add_argument('-ped', default=None, required=False, type=str, nargs='*', help='A file in PLINK plain text format (.ped)')
     input_parser.add_argument('-bim', default=None, required=False, type=str, nargs='*', help='A allele coding file in PLINK plain text format (.bim)')
+    input_parser.add_argument('-libped', default=None, required=False, type=str, help='A haplotype library file in PLINK plain text format (.ped & .bim)')
+    input_parser.add_argument('-libphase', default=None, required=False, type=str, help='A haplotype library file in AlphaImpute phase format (.phase)')
+
 
 #    input_parser.add_argument('-founder', default=None, required=False, type=str, help='A file that gives the founder individuals for each individual.')
 
@@ -67,9 +70,9 @@ def getargs():
     InputOutput.add_arguments_from_dictionary(algorithm_parser, InputOutput.get_probability_options(), options=['error', 'recombination'])
     
     # Library options
-    library_parser = parser.add_argument_group('Haplotype Library Options')
-    library_parser.add_argument('-library', required=False, type=str, help='A haplotype library file in [TBD] format. '
-                                'Read the haplotype library from file rather than building it from high-density individuals.')
+    # library_parser = parser.add_argument_group('Haplotype Library Options')
+    # library_parser.add_argument('-library', required=False, type=str, help='A haplotype library file in [TBD] format. '
+    #                             'Read the haplotype library from file rather than building it from high-density individuals.')
 
     # Multithreading options
     multithread_parser = parser.add_argument_group('Multithreading Options')
@@ -337,16 +340,22 @@ def handle_inbreds(pedigree):
             individual.genotypes[heterozygous_loci] = 9
 
 
-def load_library(args):
-    """Read in library from PLINK plain text
-    Returns a HaplotypeLibrary() and allele coding array"""
-    print(f'Loading haplotype library: {args.library}')
-
-    # haplotype_library = HaplotypeLibrary.load(args.library)
-    # return haplotype_library, None
-
+def read_library(args):
+    """Read in a haplotype library. Returns a HaplotypeLibrary() and allele coding array"""
+    assert args.libped or args.libphase
+    filename = args.libped if args.libped else args.libphase
+    print(f'Reading haplotype library from: {filename}')
     library = Pedigree.Pedigree()
-    library.readInPlinkPlainTxt(args.library, args.startsnp, args.stopsnp, haps=True)
+    if args.libped:
+        basename = args.libped.split('.')[0]  # remove .ped
+        library.readInBim(f'{basename}.bim', args.startsnp, args.stopsnp)
+        library.readInPed(f'{basename}.ped', args.startsnp, args.stopsnp, haps=True)
+    elif args.libphase:
+        library.readInPhase(args.libphase, args.startsnp, args.stopsnp)
+    else:
+        # This shouldn't happen
+        raise ValueError('No library specified')
+
     print(f'Haplotype library contains {len(library)} individuals with {library.nLoci} markers')
     haplotype_library = HaplotypeLibrary.HaplotypeLibrary(library.nLoci)
     for individual in library:
@@ -357,7 +366,7 @@ def load_library(args):
     return haplotype_library, library.allele_coding
 
 
-def write_library(filename, library, allele_coding):
+def write_library(args, library, allele_coding):
     """Write out haplotype library, first converting to a Pedigree object"""
     # Construct pedigree
     pedigree = Pedigree.Pedigree()
@@ -370,41 +379,140 @@ def write_library(filename, library, allele_coding):
         else:
             individual.haplotypes = np.vstack([individual.haplotypes, haplotype])
     # Write out
-    print(f'Writing haplotype library to {filename} .ped and .phase')
-    pedigree.writePhasePlink(f'{filename}.ped')
-    pedigree.writePhase(f'{filename}.phase')
-    write_allele_coding(f'{filename}.bim', allele_coding)
-    
-
-def check_allele_coding(coding):
-    """Check coding is sensible"""
-    # No monoallelic loci
-    n_monoallelic = (coding[0] == coding[1]).sum()
-    if n_monoallelic > 0:
-        print(f'Allele coding has {n_monoallelic} monoallelic values')
-
-    # No missing values
-    n_missing = (coding == b'0').sum()
-    if n_missing > 0:
-        print(f'Allele coding has {n_missing} missing values')
+    if args.file_format == 'PLINK':
+        print(f'Writing haplotype library to {args.out}.ped and {args.out}.bim')
+        pedigree.writePhasePed(f'{args.out}.ped')
+        pedigree.writeBim(f'{args.out}.bim')
+    else:
+        print(f'Writing haplotype library to {args.out}.phase')
+        pedigree.writePhase(f'{args.out}.phase')
 
 
-def write_allele_coding(filename, coding):
-    """Write allele coding to file"""
-    check_allele_coding(coding)
-    with open(filename, 'w') as f:
-        f.write(' '.join(coding[0].astype(str)) + '\n')
-        f.write(' '.join(coding[1].astype(str)))
+def imputation(args, model, genotypes, library, coding): # pass coding via genotypes.allele_coding
+    """Handle imputation tasks"""
+    impute_individuals(model, args, genotypes, library)
 
-# Moved to Pedigree.py
-# def read_allele_coding(filename):
-#     """Read allele coding from file"""
-#     with open(filename, 'r') as f:
-#         code0 = np.array(f.readline().split(), dtype=np.bytes_)
-#         code1 = np.array(f.readline().split(), dtype=np.bytes_)
-#     coding = np.vstack([code0, code1])
-#     check_allele_coding(coding)
-#     return coding
+    # Output
+    genotypes.writeDosages(args.out + '.dosages')
+    genotypes.writeGenotypes(args.out + '.genotypes')
+    print('Coding the same?', np.alltrue(genotypes.allele_coding == coding))
+    print(genotypes.allele_coding)
+    print(coding)
+
+
+    # If using ped format write it out as well
+    if args.file_format == 'PLINK':
+        genotypes.allele_coding = coding  # use the library coding
+        genotypes.writeGenotypesPed(args.out + '.ped')
+        genotypes.writeBim(args.out + '.bim')
+
+
+def create_library(args, model, genotypes, haplotype_library): # pedigree -> genotypes
+    """Handle library creation tasks"""
+    n_loci = genotypes.nLoci
+
+    # Calculate minor allele frequency and determine high density individuals
+    genotypes.setMaf()
+    genotypes.high_density_threshold = args.hd_threshold
+    genotypes.set_high_density()
+    hd_individuals = [individual for individual in genotypes if individual.is_high_density]
+
+    # Error if there are no high-density individuals
+    if len(hd_individuals) == 0:
+        print(f'ERROR: zero individuals genotyped at high-density\n'
+                'Try reducing the high-density threshold (-hd_threshold), so that more individuals are classed as high-density\n'
+                'Exiting...')
+        sys.exit(2)
+    print(f'{len(hd_individuals)} individuals are genotyped at high-density (threshold {args.hd_threshold}) '
+          f'and will be used to build the haplotype library')
+
+    # Update an existing library with new genotypes
+    if args.libped or args.libphase:
+        print(f"Updating haplotype library with {len(hd_individuals)} "
+              f'high-density genotypes')
+
+        # Handle any genotypes already present in the haplotype library
+        duplicate_identifiers = (set(haplotype_library.get_identifiers()) &
+                                 set(individual.idx for individual in hd_individuals))
+        if len(duplicate_identifiers) != 0:
+            print(f'WARNING: {len(duplicate_identifiers)} genotypes are already present '
+                  f'in haplotype library: these will be ignored')
+            print(f"  Ignored genotype identifiers are:\n"
+                  f"  {' '.join(sorted(duplicate_identifiers))}")
+            # Ignore the genotypes
+            hd_individuals = [individual for individual in hd_individuals
+                             if individual.idx not in duplicate_identifiers]
+
+        haplotype_library.unfreeze()
+    else:
+        # Create empty haplotype library
+        haplotype_library = HaplotypeLibrary.HaplotypeLibrary(n_loci=n_loci)
+
+    append_random_haplotypes(haplotype_library, args, hd_individuals, genotypes.maf)
+    refine_library(model, args, hd_individuals, haplotype_library, genotypes.maf)
+    write_library(args, haplotype_library, genotypes.allele_coding)
+
+
+def read_genotypes(args):
+    """Read genotypes from file(s)"""
+    print('Reading genotypes...')
+    genotypes = Pedigree.Pedigree()  # rename pedigree genotypes?
+    InputOutput.readInPedigreeFromInputs(genotypes, args, genotypes=True, haps=False, reads=False)
+    if len(genotypes) == 0:
+        print('ERROR: no genotypes supplied. Please supply them with the -genotypes or -ped/-bim options\nExiting...')
+        sys.exit(2)
+    print(f'Read in {len(genotypes)} individuals with {genotypes.nLoci} markers')
+
+    # Construct empty haplotypes member variables if not read in from file
+    for individual in genotypes:
+        individual.constructInfo(genotypes.nLoci, genotypes=False, haps=True)
+
+    # Handle inbred/double haploid individuals
+    if args.haploid:
+        handle_inbreds(genotypes)
+
+    return genotypes
+
+
+def check_arguments_consistent(args):
+    """Checks that a consistent set of arguments has been supplied"""
+
+    if not (args.createlib or args.impute):
+        print('ERROR: one of -createlib or -impute needs to be specified\nExiting...')
+        sys.exit(2)
+    elif args.createlib and args.impute:
+        print('ERROR: only one of -createlib or -impute should be specified\nExiting...')
+        sys.exit(2)
+
+    if args.libped and args.libphase:
+        print('ERROR: only one of -libped or -libphase should be specified\nExiting...')
+        sys.exit(2)
+
+    if args.genotypes and (args.ped or args.bim):
+        print('ERROR: -genotypes and -ped/-bim cannot be specified together\n'
+              'Please only use one of -genotypes or -ped\nExiting...')
+        sys.exit(2)
+
+    if args.libped and args.genotypes:
+        print('ERROR: -libped and -genotypes cannot be specified together\n'
+              'Please use a consistent format, either -libped and -ped or -libphase and -genotypes\nExiting...')
+        sys.exit(2)
+    elif args.libphase and args.ped:
+        print('ERROR: -libphase and -ped cannot be specified together\n'
+              'Please use a consistent format, either -libped and -ped or -libphase and -genotypes\nExiting...')
+        sys.exit(2)
+
+    if args.impute:
+        print('Imputing genotypes with haplotype library...\n')
+        # Check requirements
+        if args.libped is None and args.libphase is None:
+            print('ERROR: no haplotype library supplied. Please supply a library with the -lib option\nExiting...')
+            sys.exit(2)
+    if args.createlib:
+        if args.libped or args.libphase:  # This would be best moved to the create library function
+            print(f'Updating haplotype library FILENAME .phase or .ped/.bim from genotypes...\n')
+        else:
+            print('Creating haplotype library from genotypes...\n')
 
 
 @profile
@@ -415,82 +523,40 @@ def main():
     name = 'AlphaPlantImpute2'
     InputOutput.print_boilerplate(name, __version__)
 
-    # p1 = Pedigree.Pedigree()
-    # p1.readInPlinkPlainTxt('true.ped', haps=True)
-    # p2 = Pedigree.Pedigree()
-    # p2.readInPlinkPlainTxt('lib.ped', haps=True)
-    # print('Same coding:', np.all(p1.allele_coding == p2.allele_coding))
-    # exit(2)
-    # write_allele_coding('true.coding', p1.allele_coding)
-    # coding_tmp = read_allele_coding('true.coding')
-    # print('Same coding:', np.all(coding_tmp == p1.allele_coding))
-    # exit(2)
-    # p1 = Pedigree.Pedigree()
-    # p1.readInPlinkPlainTxt('lib.ped', haps=True)
-    # p1.writePhasePlink('tmp.ped')
-    # p1.writePhase('tmp.phase')
-    # p1.writeGenotypes('tmp.genotypes')
-    # exit(2)
-    
-
-    # Handle command-line arguments
+    # Parse command-line arguments
     args = getargs()
 
     # Argument checks
-    if not (args.createlib or args.impute or args.recode):
-        print('ERROR: one of -createlib, -impute or -recode needs to be specified\nExiting...')
-        sys.exit(2)
-    elif args.createlib and args.impute: # to do add -recode
-        print('ERROR: only one of -createlib or -impute should be specified\nExiting...')
-        sys.exit(2)
-
-
-    # Some (other) arguments don't make sense with -impute and -createlib: check and warn user
-    # -hd_threshold with -impute, but -hd_threshold is set by default
-    # -n_sample_rounds with -impute, also set by default
-    # -n_bins only used in imputation
+    check_arguments_consistent(args)
 
     # Set random seed
     set_seed(args)
 
+    # Are we using PLINK plain text or AlphaImpute format
+    args.file_format = None  # Monkey patch args - makes it easy to pass to functions
+    if args.genotypes or args.libphase:
+        args.file_format = 'AlphaImpute'
+    elif args.ped or args.libped:
+        args.file_format = 'PLINK'
 
-    # Load library if one has been provided
-    if args.library:
-        # Nice to check the ped and bim files exist
-        library = Pedigree.Pedigree()
-        print(f'Reading {args.library}.bim')
-        library.readInBim(f'{args.library}.bim', args.startsnp, args.stopsnp)
-        library.readInPed(f'{args.library}.ped', args.startsnp, args.stopsnp, haps=True)
-        print(f'Haplotype library contains {len(library)} individuals with {library.nLoci} markers')
-        haplotype_library = HaplotypeLibrary.HaplotypeLibrary(library.nLoci)
-        for individual in library:
-            for haplotype in individual.haplotypes:
-                haplotype_library.append(haplotype, individual.idx)
-        haplotype_library.freeze()
-
+    # Read library if one has been provided
+    haplotype_library, library_coding = None, None
+    if args.libped or args.libphase:
+        haplotype_library, library_coding = read_library(args)
 
     # Read genotypes
-    pedigree = Pedigree.Pedigree()
-    InputOutput.readInPedigreeFromInputs(pedigree, args, genotypes=True, haps=False, reads=False)
-    n_loci = pedigree.nLoci
+    genotypes = read_genotypes(args)
+    n_loci = genotypes.nLoci
 
-    print('Coding check', pedigree.allele_coding[:, :10])
-
-    # Construct empty haplotypes/genotypes member variables if not read in from file
-    for individual in pedigree:
-        individual.constructInfo(n_loci, genotypes=False, haps=True)
-
-    # Handle inbred/double haploid individuals
-    if args.haploid:
-        handle_inbreds(pedigree)
-
-    # Calculate minor allele frequency and determine high density individuals
-    pedigree.setMaf()
-    pedigree.high_density_threshold = args.hd_threshold
-    pedigree.set_high_density()
-    hd_individuals = high_density_individuals(pedigree)
-    print(f'Read in {len(pedigree)} individuals, {len(hd_individuals)} are at high-density (threshold {args.hd_threshold})')
-
+    # Check library and genotypes allele codings are the same
+    if genotypes.allele_coding is not None and library_coding is not None:
+        if not np.alltrue(genotypes.allele_coding == library_coding):
+            print(genotypes.allele_coding[:, :10])
+            print(library_coding)
+            print( (genotypes.allele_coding != library_coding).sum() )
+            print('WARNING: Library and genotype allele codings are different\n'
+                  'WARNING: The software will not work as expected if the input files are inconsistently coded\n'
+                  '         It is recommended to only provide a coding for the haplotype library')
 
     # Probabilistic rates
     error_rate = np.full(n_loci, args.error, dtype=np.float32)
@@ -504,57 +570,16 @@ def main():
     else:
         model = CombinedHMM.DiploidMarkovModel(n_loci, error_rate, recombination_rate)
 
-
     # Create or update haplotype library from high-density genotypes
     if args.createlib:
-        # Error if there are no high-density individuals
-        if len(hd_individuals) == 0:
-            print(f'ERROR: zero individuals genotyped at high-density\n'
-                  'Try reducing the high-density threshold (-hd_threshold), so that more individuals are classed as high-density\n'
-                  'Exiting...')
-            sys.exit(2)
-
-        # Update an existing library with new genotypes
-        if args.library:
-            print(f"Updating {args.library} with {len(hd_individuals)} "
-                  f"high-density genotypes from {' '.join(args.genotypes)}")
-
-            # Handle any genotypes already present in the haplotype library
-            duplicate_identifiers = (set(haplotype_library.get_identifiers()) &
-                                     set(individual.idx for individual in hd_individuals))
-            if len(duplicate_identifiers) != 0:
-                print(f'WARNING: {len(duplicate_identifiers)} genotypes are already present '
-                      f'in haplotype library {args.library}: these will be ignored')
-                print(f"  Ignored genotype identifiers are:\n"
-                      f"  {' '.join(sorted(duplicate_identifiers))}")
-                # Ignore the genotypes
-                hd_individuals = [individual for individual in hd_individuals
-                                  if individual.idx not in duplicate_identifiers]
-
-            #haps = haplotype_library._haplotypes.copy()  # Testing, remove
-            haplotype_library.unfreeze()
-        else:
-            # Create empty haplotype library
-            haplotype_library = HaplotypeLibrary.HaplotypeLibrary(n_loci=n_loci)
-
-        append_random_haplotypes(haplotype_library, args, hd_individuals, pedigree.maf)
-        refine_library(model, args, hd_individuals, haplotype_library, pedigree.maf)
-        # filepath = args.out + '.pkl'
-        # print(f'Writing haplotype library to: {filepath}')
-        # HaplotypeLibrary.save(filepath, haplotype_library)
-        write_library(args.out, haplotype_library, pedigree.allele_coding)  # to do: handle allele coding properly
+        create_library(args, model, genotypes, haplotype_library)
 
     # Imputation
     if args.impute:
-        impute_individuals(model, args, pedigree, haplotype_library)
-        pedigree.writeDosages(args.out + '.dosages')
-        pedigree.writeGenotypes(args.out + '.genotypes')
-        print('Coding the same?', np.alltrue(pedigree.allele_coding == library.allele_coding))
-        pedigree.allele_coding = library.allele_coding  # use the library coding
-        pedigree.writePhasePlink(args.out + '.ped')
+        imputation(args, model, genotypes, haplotype_library, library_coding) # just set pedigree allele coding?
 
     # Phasing
-    # phase_individuals(args, pedigree, haplotype_library, pedigree.maf, recombination_rate, error_rate)
+    # phase_individuals(args, genotypes, haplotype_library, genotypes.maf, recombination_rate, error_rate)
     # pedigree.writePhase(args.out + '.phase')
 
 if __name__ == "__main__":
