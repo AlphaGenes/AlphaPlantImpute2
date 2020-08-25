@@ -46,6 +46,7 @@ def getargs():
     input_parser.add_argument('-bim', default=None, required=False, type=str, nargs='*', help='A allele coding file in PLINK plain text format (.bim)')
     input_parser.add_argument('-libped', default=None, required=False, type=str, help='A haplotype library file in PLINK plain text format (.ped & .bim)')
     input_parser.add_argument('-libphase', default=None, required=False, type=str, help='A haplotype library file in AlphaImpute phase format (.phase)')
+    input_parser.add_argument('-founders', default=None, required=False, type=str, help='A file that gives the founder individuals for each individual.')
 
 
 #    input_parser.add_argument('-founder', default=None, required=False, type=str, help='A file that gives the founder individuals for each individual.')
@@ -232,6 +233,9 @@ def impute_individuals(model, args, pedigree, haplotype_library):
     # Set all dosages to zero, so they can be incrementally added to
     dosages = np.zeros((len(individuals), n_loci), dtype=np.float32)
 
+    haplotype_identifiers = haplotype_library.get_identifiers()
+    print('Hap lib IDs', haplotype_identifiers)
+
     # Loop over rounds
     for iteration in range(args.n_impute_rounds):
         print(f'  Round {iteration}')
@@ -239,6 +243,9 @@ def impute_individuals(model, args, pedigree, haplotype_library):
         # Sample the haplotype library for each iteration
         haplotype_library_sample = (haplotype_library.sample_targeted(args.n_haplotypes, individual.genotypes, args.n_bins)
                                     for individual in individuals)
+
+
+
         # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
         function_args = (repeat(model), individuals, haplotype_library_sample, repeat(args.calling_threshold))
 
@@ -264,55 +271,6 @@ def impute_individuals(model, args, pedigree, haplotype_library):
         if not np.allclose(individual.dosages, dosages[i]):
             print(individual.idx, np.sum(np.abs(individual.dosages - dosages[i])))
         individual.dosages = dosages[i]
-
-
-def get_phase(individual, haplotype_library, recombination_rate, error_rate):
-    """Get phase for an individual
-    HaploidHMM.haploidHMM() and DiploidHMM.diploidHMM() set the individual's imputed_haplotypes member variable"""
-    if individual.inbred:
-        HaploidHMM.haploidHMM(individual, haplotype_library, error_rate, recombination_rate, calling_method='Viterbi')
-    else:
-        DiploidHMM.diploidHMM(individual, haplotype_library, haplotype_library, error_rate, recombination_rate,
-                              calling_method='Viterbi', use_called_haps=False)
-    return individual
-
-
-def phase_individuals(args, pedigree, haplotype_library, maf, recombination_rate, error_rate):
-    """Phase all individuals in the pedigree"""
-
-    print(f'Phasing individuals: {args.n_haplotypes} haplotype samples')
-
-    # Iterate over all individuals in the Pedigree() object
-    individuals = pedigree
-
-    # Sample the haplotype library
-    haplotype_library_sample = (haplotype_library.sample_targeted(args.n_haplotypes, individual.genotypes, args.n_bins)
-                                for individual in individuals)
-    # Arguments to pass to get_phase() via map() and ThreadPoolExecutor.map()
-    get_phase_args = (individuals, haplotype_library_sample, repeat(recombination_rate), repeat(error_rate))
-
-    # Get dosages for all individuals
-    if args.maxthreads == 1:
-        # Single threaded
-        results = map(get_phase, *get_phase_args)
-    else:
-        # Multithreaded
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.maxthreads) as executor:
-            results = executor.map(get_phase, *get_phase_args)
-
-    # Loop over results
-    for individual in results:
-        # (After imputation, `individual.genotype` is the imputed genotype.)
-        # Use the imputed genotype to correct the haplotypes, so that imputed phase and genotype are consistent
-        haplotypes = individual.imputed_haplotypes
-        if individual.inbred:
-            correct_haplotypes(haplotypes, haplotypes, individual.genotypes, maf)
-            haplotypes = np.vstack([haplotypes, haplotypes])
-        else:
-            correct_haplotypes(haplotypes[0], haplotypes[1], individual.genotypes, maf)
-        # Copy phased haplotypes into `haplotypes` member variable ready for
-        # writing out with Pedigree.writePhase()
-        individual.haplotypes = haplotypes
 
 
 def set_seed(args):
@@ -456,7 +414,7 @@ def create_library(args, model, genotypes, haplotype_library): # pedigree -> gen
 def read_genotypes(args):
     """Read genotypes from file(s)"""
     print('Reading genotypes...')
-    genotypes = Pedigree.Pedigree()  # rename pedigree genotypes?
+    genotypes = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
     InputOutput.readInPedigreeFromInputs(genotypes, args, genotypes=True, haps=False, reads=False)
     if len(genotypes) == 0:
         print('ERROR: no genotypes supplied. Please supply them with the -genotypes or -ped/-bim options\nExiting...')
@@ -515,6 +473,24 @@ def check_arguments_consistent(args):
             print('Creating haplotype library from genotypes...\n')
 
 
+def read_in_founder_file(filename, pedigree):
+    """Read in founders from file modifying pedigree with that information"""
+    focal_individuals = []
+    with open(filename) as f:
+        lines = f.readlines()
+    ped_list = [line.split() for line in lines]
+
+    for split_line in ped_list:
+        ind = pedigree[split_line[0]]
+        focal_individuals += [ind]
+        ind.founders = [pedigree[val] for val in split_line[1:]]
+
+        for founder in ind.founders:
+            founder.descendants += [ind]
+
+    return focal_individuals
+
+
 @profile
 def main():
     """Main execution code"""
@@ -553,10 +529,17 @@ def main():
         if not np.alltrue(genotypes.allele_coding == library_coding):
             print(genotypes.allele_coding[:, :10])
             print(library_coding)
-            print( (genotypes.allele_coding != library_coding).sum() )
+            print((genotypes.allele_coding != library_coding).sum())
             print('WARNING: Library and genotype allele codings are different\n'
                   'WARNING: The software will not work as expected if the input files are inconsistently coded\n'
                   '         It is recommended to only provide a coding for the haplotype library')
+
+
+    if args.founders:
+        read_in_founder_file(args.founders, genotypes)
+
+    for i in genotypes:
+        print(i.idx, [j.idx for j in i.founders])
 
     # Probabilistic rates
     error_rate = np.full(n_loci, args.error, dtype=np.float32)
@@ -577,10 +560,6 @@ def main():
     # Imputation
     if args.impute:
         imputation(args, model, genotypes, haplotype_library, library_coding) # just set pedigree allele coding?
-
-    # Phasing
-    # phase_individuals(args, genotypes, haplotype_library, genotypes.maf, recombination_rate, error_rate)
-    # pedigree.writePhase(args.out + '.phase')
 
 if __name__ == "__main__":
     main()
