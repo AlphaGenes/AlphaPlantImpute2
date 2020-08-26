@@ -227,23 +227,25 @@ def impute_individuals(model, args, pedigree, haplotype_library):
     rounds_str = 'rounds' if args.n_impute_rounds > 1 else 'round'
     print(f'Imputing individuals: {args.n_impute_rounds} {rounds_str}, {args.n_haplotypes} haplotype samples per round')
 
-    # Iterate over all individuals in the Pedigree() object
+    # Iterate over all individuals in the Pedigree()
     individuals = pedigree
 
     # Set all dosages to zero, so they can be incrementally added to
     dosages = np.zeros((len(individuals), n_loci), dtype=np.float32)
-
-    haplotype_identifiers = haplotype_library.get_identifiers()
-    print('Hap lib IDs', haplotype_identifiers)
 
     # Loop over rounds
     for iteration in range(args.n_impute_rounds):
         print(f'  Round {iteration}')
 
         # Sample the haplotype library for each iteration
-        haplotype_library_sample = (haplotype_library.sample_targeted(args.n_haplotypes, individual.genotypes, args.n_bins)
-                                    for individual in individuals)
-
+        if args.founders:
+            haplotype_library_sample = (haplotype_library.sample_only_identifiers(individual.founders)
+                                        for individual in individuals)
+        else:
+            haplotype_library_sample = (haplotype_library.sample_targeted(args.n_haplotypes,
+                                                                          individual.genotypes,
+                                                                          args.n_bins)
+                                        for individual in individuals)
 
 
         # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
@@ -348,6 +350,7 @@ def write_library(args, library, allele_coding):
 
 def imputation(args, model, genotypes, library, coding): # pass coding via genotypes.allele_coding
     """Handle imputation tasks"""
+    # Impute
     impute_individuals(model, args, genotypes, library)
 
     # Output
@@ -356,7 +359,6 @@ def imputation(args, model, genotypes, library, coding): # pass coding via genot
     print('Coding the same?', np.alltrue(genotypes.allele_coding == coding))
     print(genotypes.allele_coding)
     print(coding)
-
 
     # If using ped format write it out as well
     if args.file_format == 'PLINK':
@@ -471,25 +473,47 @@ def check_arguments_consistent(args):
             print(f'Updating haplotype library FILENAME .phase or .ped/.bim from genotypes...\n')
         else:
             print('Creating haplotype library from genotypes...\n')
+        if args.founders:
+            print('ERROR: -founders can only be specified with -impute, not -createlib\nExiting...')
+            sys.exit(2)
 
 
-def read_in_founder_file(filename, pedigree):
-    """Read in founders from file modifying pedigree with that information"""
-    focal_individuals = []
+def read_in_founders(filename, pedigree, haplotype_library):
+    """Read in founders from file modifying the supplied pedigree with that information"""
+    print(f'Reading founders from {filename}...')
+    focal_ids = []
+    founder_ids = set()
     with open(filename) as f:
         lines = f.readlines()
-    ped_list = [line.split() for line in lines]
 
-    for split_line in ped_list:
-        ind = pedigree[split_line[0]]
-        focal_individuals += [ind]
-        ind.founders = [pedigree[val] for val in split_line[1:]]
+    for split_line in [line.split() for line in lines]:
+        identifier = split_line[0]
+        try:
+            individual = pedigree[identifier]
+            focal_ids += [individual.idx]
+        except KeyError:
+            print(f'ERROR: individual {identifier} not found in genotype '
+                  f'(files read in with -ped or -genotypes)\nExiting...')
+            sys.exit(2)
+        founder_ids.update(split_line[1:])
+        individual.founders = split_line[1:]
+        if len(individual.founders) == 0:
+            print(f'ERROR: individual {individual.idx} has no founders\nExiting...')
+            sys.exit(2)
 
-        for founder in ind.founders:
-            founder.descendants += [ind]
+    # Remove non focal ids from pedigree - a bit ugly but simplifies a lot of subsequent code
+    ids_to_remove = set(i.idx for i in pedigree) - set(focal_ids)
+    for idx in ids_to_remove:
+        del pedigree.individuals[idx]
+    pedigree.setUpGenerations()
+    print(f'Read in {len(focal_ids)} focal individuals, which will be imputed')
 
-    return focal_individuals
-
+    # Check all founders are in the haplotype library
+    diff = founder_ids - set(haplotype_library._identifiers)
+    if len(diff) > 0:
+        print(f'ERROR: focal individuals: {list(diff)}\n'
+              f'not found in haplotype library\nExiting...')
+        sys.exit(2)
 
 @profile
 def main():
@@ -534,12 +558,11 @@ def main():
                   'WARNING: The software will not work as expected if the input files are inconsistently coded\n'
                   '         It is recommended to only provide a coding for the haplotype library')
 
-
+    # Read founders if supplied
+    # sample_target not required for this - just use all founders; undo modifications to sample_target
+    focal_ids = None
     if args.founders:
-        read_in_founder_file(args.founders, genotypes)
-
-    for i in genotypes:
-        print(i.idx, [j.idx for j in i.founders])
+         read_in_founders(args.founders, genotypes, haplotype_library)
 
     # Probabilistic rates
     error_rate = np.full(n_loci, args.error, dtype=np.float32)
@@ -559,7 +582,7 @@ def main():
 
     # Imputation
     if args.impute:
-        imputation(args, model, genotypes, haplotype_library, library_coding) # just set pedigree allele coding?
+        imputation(args, model, genotypes, haplotype_library, library_coding) # just set genotypes allele coding?
 
 if __name__ == "__main__":
     main()
