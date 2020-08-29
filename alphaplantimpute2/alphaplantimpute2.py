@@ -36,20 +36,20 @@ def getargs():
     core_parser = parser.add_argument_group('Core Options')
     core_parser.add_argument('-createlib', action='store_true', required=False, help='Create a haplotype library.')
     core_parser.add_argument('-impute', action='store_true', required=False, help='Impute individuals.')
-    # core_parser.add_argument('-recode', action='store_true', required=False, help='Recode files.') # remove?
+    core_parser.add_argument('-recode', action='store_true', required=False, help='Recode files.') # remove?
     core_parser.add_argument('-out', required=True, type=str, help='The output file prefix.')
 
     # Input options
     input_parser = parser.add_argument_group('Input Options')
     InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
     input_parser.add_argument('-ped', default=None, required=False, type=str, nargs='*', help='A file in PLINK plain text format (.ped)')
-    input_parser.add_argument('-bim', default=None, required=False, type=str, nargs='*', help='A allele coding file in PLINK plain text format (.bim)')
+    # input_parser.add_argument('-bim', default=None, required=False, type=str, nargs='*', help='A allele coding file in PLINK plain text format (.bim)')
     input_parser.add_argument('-libped', default=None, required=False, type=str, help='A haplotype library file in PLINK plain text format (.ped & .bim)')
     input_parser.add_argument('-libphase', default=None, required=False, type=str, help='A haplotype library file in AlphaImpute phase format (.phase)')
     input_parser.add_argument('-founders', default=None, required=False, type=str, help='A file that gives the founder individuals for each individual.')
+    input_parser.add_argument('-fcorrect', action='store_true', required=False, help='When building a haplotype library, print the fraction of loci that had to be corrected.')
 
 
-#    input_parser.add_argument('-founder', default=None, required=False, type=str, help='A file that gives the founder individuals for each individual.')
 
     # Algorithm options
     algorithm_parser = parser.add_argument_group('Algorithm Options')
@@ -157,6 +157,7 @@ def correct_haplotypes(paternal_haplotype, maternal_haplotype, true_genotype, ma
     paternal_haplotype[mask] = paternal
     maternal_haplotype[mask] = maternal
 
+    # Return number of loci that were corrected
     return np.sum(mask)
 
 
@@ -175,7 +176,7 @@ def refine_library(model, args, individuals, haplotype_library, maf):
     """Refine haplotype library"""
 
     rounds_str = 'rounds' if args.n_sample_rounds > 1 else 'round'
-    print(f'Refining haplotype library: {args.n_sample_rounds} {rounds_str}, {args.n_haplotypes} haplotype samples per round')
+    print(f'Building haplotype library: {args.n_sample_rounds} {rounds_str}, {args.n_haplotypes} haplotype samples per round')
 
     # Loop over iterations
     for iteration in range(args.n_sample_rounds):
@@ -208,7 +209,8 @@ def refine_library(model, args, individuals, haplotype_library, maf):
             else:
                 n_corrected += correct_haplotypes(haplotypes[0], haplotypes[1], individual.genotypes, maf)
                 haplotype_library.update(np.array(haplotypes), individual.idx)
-        print('Avg number corrected loci', n_corrected/len(individuals))
+        if args.fcorrect:
+            print(f'  corrected loci: {n_corrected/len(individuals):.3g}')
 
 
 def get_dosages(model, individual, haplotype_library, calling_threshold):
@@ -307,9 +309,7 @@ def read_library(args):
     print(f'Reading haplotype library from: {filename}')
     library = Pedigree.Pedigree()
     if args.libped:
-        basename = args.libped.split('.')[0]  # remove .ped
-        library.readInBim(f'{basename}.bim', args.startsnp, args.stopsnp)
-        library.readInPed(f'{basename}.ped', args.startsnp, args.stopsnp, haps=True)
+        library.readInPed(args.libped, args.startsnp, args.stopsnp, haps=True, get_coding=True)
     elif args.libphase:
         library.readInPhase(args.libphase, args.startsnp, args.stopsnp)
     else:
@@ -340,9 +340,8 @@ def write_library(args, library, allele_coding):
             individual.haplotypes = np.vstack([individual.haplotypes, haplotype])
     # Write out
     if args.file_format == 'PLINK':
-        print(f'Writing haplotype library to {args.out}.ped and {args.out}.bim')
+        print(f'Writing haplotype library to {args.out}.ped')
         pedigree.writePhasePed(f'{args.out}.ped')
-        pedigree.writeBim(f'{args.out}.bim')
     else:
         print(f'Writing haplotype library to {args.out}.phase')
         pedigree.writePhase(f'{args.out}.phase')
@@ -350,21 +349,20 @@ def write_library(args, library, allele_coding):
 
 def imputation(args, model, genotypes, library, coding): # pass coding via genotypes.allele_coding
     """Handle imputation tasks"""
+    assert np.alltrue(genotypes.allele_coding == coding)  # not needed if coding passed via genotypes
     # Impute
     impute_individuals(model, args, genotypes, library)
 
-    # Output
-    genotypes.writeDosages(args.out + '.dosages')
-    genotypes.writeGenotypes(args.out + '.genotypes')
-    print('Coding the same?', np.alltrue(genotypes.allele_coding == coding))
-    print(genotypes.allele_coding)
-    print(coding)
-
-    # If using ped format write it out as well
+    # Write out
+    print(f'Writing out {args.out}.dosages')
+    genotypes.writeDosages(f'{args.out}.dosages')
     if args.file_format == 'PLINK':
         genotypes.allele_coding = coding  # use the library coding
-        genotypes.writeGenotypesPed(args.out + '.ped')
-        genotypes.writeBim(args.out + '.bim')
+        print(f'Writing out {args.out}.ped')
+        genotypes.writeGenotypesPed(f'{args.out}.ped')
+    else:
+        print(f'Writing out {args.out}.genotypes')
+        genotypes.writeGenotypes(f'{args.out}.genotypes')
 
 
 def create_library(args, model, genotypes, haplotype_library): # pedigree -> genotypes
@@ -413,11 +411,18 @@ def create_library(args, model, genotypes, haplotype_library): # pedigree -> gen
     write_library(args, haplotype_library, genotypes.allele_coding)
 
 
-def read_genotypes(args):
+def read_genotypes(args, allele_coding=None):
     """Read genotypes from file(s)"""
     print('Reading genotypes...')
     genotypes = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
-    InputOutput.readInPedigreeFromInputs(genotypes, args, genotypes=True, haps=False, reads=False)
+
+    # Use provided coding if given
+    get_coding = True
+    if allele_coding is not None:
+        genotypes.allele_coding = allele_coding
+        get_coding = False
+
+    InputOutput.readInPedigreeFromInputs(genotypes, args, genotypes=True, haps=False, reads=False, get_coding=get_coding)
     if len(genotypes) == 0:
         print('ERROR: no genotypes supplied. Please supply them with the -genotypes or -ped/-bim options\nExiting...')
         sys.exit(2)
@@ -532,6 +537,20 @@ def main():
     # Set random seed
     set_seed(args)
 
+    if args.recode:
+        true = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
+        true.readInPed('true.ped', args.startsnp, args.stopsnp, haps=False, get_coding=True)
+        true.writeGenotypes('true.recoded')
+        masked = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
+        masked.allele_coding = true.allele_coding
+        masked.readInPed('masked.ped', args.startsnp, args.stopsnp, haps=False, get_coding=False)
+        masked.writeGenotypes('masked.recoded')
+        imputed = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
+        imputed.allele_coding = true.allele_coding
+        imputed.readInPed('imputed.ped', args.startsnp, args.stopsnp, haps=False, get_coding=False)
+        imputed.writeGenotypes('imputed.recoded')
+        sys.exit(2)
+
     # Are we using PLINK plain text or AlphaImpute format
     args.file_format = None  # Monkey patch args - makes it easy to pass to functions
     if args.genotypes or args.libphase:
@@ -545,8 +564,10 @@ def main():
         haplotype_library, library_coding = read_library(args)
 
     # Read genotypes
-    genotypes = read_genotypes(args)
+    genotypes = read_genotypes(args, library_coding)
     n_loci = genotypes.nLoci
+
+    # Check library and genotypes alleles are consistent
 
     # Check library and genotypes allele codings are the same
     if genotypes.allele_coding is not None and library_coding is not None:
