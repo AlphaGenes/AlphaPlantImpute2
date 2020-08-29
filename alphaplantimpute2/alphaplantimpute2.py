@@ -224,6 +224,7 @@ def get_dosages(model, individual, haplotype_library, calling_threshold):
 def impute_individuals(model, args, pedigree, haplotype_library):
     """Impute all individuals in the pedigree"""
     n_loci = pedigree.nLoci
+    print(f'Imputing {len(pedigree)} individuals...')
 
     # Iterate over all individuals in the Pedigree()
     individuals = pedigree
@@ -325,9 +326,8 @@ def write_library(args, library, allele_coding):
         pedigree.writePhase(f'{args.out}.phase')
 
 
-def imputation(args, model, genotypes, library, coding): # pass coding via genotypes.allele_coding
+def imputation(args, model, genotypes, library):
     """Handle imputation tasks"""
-    assert np.alltrue(genotypes.allele_coding == coding)  # not needed if coding passed via genotypes
     # Impute
     impute_individuals(model, args, genotypes, library)
 
@@ -335,7 +335,6 @@ def imputation(args, model, genotypes, library, coding): # pass coding via genot
     print(f'Writing genotype dosages to {args.out}.dosages')
     genotypes.writeDosages(f'{args.out}.dosages')
     if args.file_format == 'PLINK':
-        genotypes.allele_coding = coding  # use the library coding
         print(f'Writing genotypes to {args.out}.ped')
         genotypes.writeGenotypesPed(f'{args.out}.ped')
     else:
@@ -343,7 +342,7 @@ def imputation(args, model, genotypes, library, coding): # pass coding via genot
         genotypes.writeGenotypes(f'{args.out}.genotypes')
 
 
-def create_library(args, model, genotypes, haplotype_library): # pedigree -> genotypes
+def create_library(args, model, genotypes, haplotype_library):
     """Handle library creation tasks"""
     n_loci = genotypes.nLoci
 
@@ -375,7 +374,7 @@ def create_library(args, model, genotypes, haplotype_library): # pedigree -> gen
                   f'in haplotype library: these will be ignored')
             print(f"  Ignored genotype identifiers are:\n"
                   f"  {' '.join(sorted(duplicate_identifiers))}")
-            # Ignore the genotypes
+            # Get the HD individuals to ignore duplicates
             hd_individuals = [individual for individual in hd_individuals
                              if individual.idx not in duplicate_identifiers]
 
@@ -384,8 +383,11 @@ def create_library(args, model, genotypes, haplotype_library): # pedigree -> gen
         # Create empty haplotype library
         haplotype_library = HaplotypeLibrary.HaplotypeLibrary(n_loci=n_loci)
 
+    # Append (randomly phased) haplotypes to either an empty library or the library being updated
     append_random_haplotypes(haplotype_library, args, hd_individuals, genotypes.maf)
+    # Phase the newly added haplotypes
     refine_library(model, args, hd_individuals, haplotype_library, genotypes.maf)
+    # Output
     write_library(args, haplotype_library, genotypes.allele_coding)
 
 
@@ -549,24 +551,11 @@ def main():
     if args.libped or args.libphase:
         haplotype_library, library_coding = read_library(args)
 
-    # Read genotypes
+    # Read genotypes (using library coding if provided)
     genotypes = read_genotypes(args, library_coding)
     n_loci = genotypes.nLoci
 
-    # Check library and genotypes alleles are consistent
-
-    # Check library and genotypes allele codings are the same
-    if genotypes.allele_coding is not None and library_coding is not None:
-        if not np.alltrue(genotypes.allele_coding == library_coding):
-            print(genotypes.allele_coding[:, :10])
-            print(library_coding)
-            print((genotypes.allele_coding != library_coding).sum())
-            print('WARNING: Library and genotype allele codings are different\n'
-                  'WARNING: The software will not work as expected if the input files are inconsistently coded\n'
-                  '         It is recommended to only provide a coding for the haplotype library')
-
     # Read founders if supplied
-    # sample_target not required for this - just use all founders; undo modifications to sample_target
     focal_ids = None
     if args.founders:
          read_in_founders(args.founders, genotypes, haplotype_library)
@@ -589,7 +578,7 @@ def main():
 
     # Imputation
     if args.impute:
-        imputation(args, model, genotypes, haplotype_library, library_coding) # just set genotypes allele coding?
+        imputation(args, model, genotypes, haplotype_library)
 
 if __name__ == "__main__":
     main()
