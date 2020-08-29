@@ -36,7 +36,7 @@ def getargs():
     core_parser = parser.add_argument_group('Core Options')
     core_parser.add_argument('-createlib', action='store_true', required=False, help='Create a haplotype library.')
     core_parser.add_argument('-impute', action='store_true', required=False, help='Impute individuals.')
-    core_parser.add_argument('-recode', action='store_true', required=False, help='Recode files.') # remove?
+    core_parser.add_argument('-decodeped', action='store_true', required=False, help='Decode .ped files.') # remove?
     core_parser.add_argument('-out', required=True, type=str, help='The output file prefix.')
 
     # Input options
@@ -47,7 +47,8 @@ def getargs():
     input_parser.add_argument('-libped', default=None, required=False, type=str, help='A haplotype library file in PLINK plain text format (.ped & .bim)')
     input_parser.add_argument('-libphase', default=None, required=False, type=str, help='A haplotype library file in AlphaImpute phase format (.phase)')
     input_parser.add_argument('-founders', default=None, required=False, type=str, help='A file that gives the founder individuals for each individual.')
-    input_parser.add_argument('-fcorrect', action='store_true', required=False, help='When building a haplotype library, print the fraction of loci that had to be corrected.')
+    input_parser.add_argument('-ncorrect', action='store_true', required=False, 
+                              help='When building a haplotype library, print the average number of loci that had to be corrected.')
 
 
 
@@ -209,7 +210,7 @@ def refine_library(model, args, individuals, haplotype_library, maf):
             else:
                 n_corrected += correct_haplotypes(haplotypes[0], haplotypes[1], individual.genotypes, maf)
                 haplotype_library.update(np.array(haplotypes), individual.idx)
-        if args.fcorrect:
+        if args.ncorrect:
             print(f'  corrected loci: {n_corrected/len(individuals):.3g}')
 
 
@@ -442,12 +443,18 @@ def read_genotypes(args, allele_coding=None):
 def check_arguments_consistent(args):
     """Checks that a consistent set of arguments has been supplied"""
 
-    if not (args.createlib or args.impute):
-        print('ERROR: one of -createlib or -impute needs to be specified\nExiting...')
+    # Check one and only one of the major arguments are supplied
+    n = np.sum(args.createlib or args.impute or args.decodeped)
+    if n == 0:
+        print('ERROR: one of -createlib, -impute or -decodeped needs to be specified\nExiting...')
         sys.exit(2)
-    elif args.createlib and args.impute:
-        print('ERROR: only one of -createlib or -impute should be specified\nExiting...')
+    elif n > 1:
+        print('ERROR: only one of -createlib, -impute or -decodeped should be specified\nExiting...')
         sys.exit(2)
+
+    # Temp
+    if args.decodeped:
+        return
 
     if args.libped and args.libphase:
         print('ERROR: only one of -libped or -libphase should be specified\nExiting...')
@@ -537,7 +544,7 @@ def main():
     # Set random seed
     set_seed(args)
 
-    if args.recode:
+    if args.decodeped:
         true = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
         true.readInPed('true.ped', args.startsnp, args.stopsnp, haps=False, get_coding=True)
         true.writeGenotypes('true.recoded')
