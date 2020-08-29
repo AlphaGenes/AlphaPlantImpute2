@@ -65,8 +65,6 @@ def getargs():
                                   'Use a value less than 0.25 for best-guess genotypes. Default: 0.1.')
     algorithm_parser.add_argument('-n_sample_rounds', default=10, required=False, type=int,
                                   help='Number of rounds of library refinement. Default: 10.')
-    algorithm_parser.add_argument('-n_impute_rounds', default=1, required=False, type=int,
-                                  help='Number of rounds of imputation. Default: 1.')
     algorithm_parser.add_argument('-n_bins', default=5, required=False, type=int,
                                   help='Number of bins for targeted haplotype sampling. Default: 5.')
     InputOutput.add_arguments_from_dictionary(algorithm_parser, InputOutput.get_probability_options(), options=['error', 'recombination'])
@@ -225,57 +223,36 @@ def get_dosages(model, individual, haplotype_library, calling_threshold):
 
 def impute_individuals(model, args, pedigree, haplotype_library):
     """Impute all individuals in the pedigree"""
-
     n_loci = pedigree.nLoci
-    rounds_str = 'rounds' if args.n_impute_rounds > 1 else 'round'
-    print(f'Imputing individuals: {args.n_impute_rounds} {rounds_str}, {args.n_haplotypes} haplotype samples per round')
 
     # Iterate over all individuals in the Pedigree()
     individuals = pedigree
 
-    # Set all dosages to zero, so they can be incrementally added to
-    dosages = np.zeros((len(individuals), n_loci), dtype=np.float32)
+    # Sample the haplotype library for each individual
+    if args.founders:
+        haplotype_library_sample = (haplotype_library.sample_only_identifiers(individual.founders)
+                                    for individual in individuals)
+    else:
+        haplotype_library_sample = (haplotype_library.sample_targeted(args.n_haplotypes,
+                                                                        individual.genotypes,
+                                                                        args.n_bins)
+                                    for individual in individuals)
 
-    # Loop over rounds
-    for iteration in range(args.n_impute_rounds):
-        print(f'  Round {iteration}')
+    # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
+    function_args = (repeat(model), individuals, haplotype_library_sample, repeat(args.calling_threshold))
 
-        # Sample the haplotype library for each iteration
-        if args.founders:
-            haplotype_library_sample = (haplotype_library.sample_only_identifiers(individual.founders)
-                                        for individual in individuals)
-        else:
-            haplotype_library_sample = (haplotype_library.sample_targeted(args.n_haplotypes,
-                                                                          individual.genotypes,
-                                                                          args.n_bins)
-                                        for individual in individuals)
+    # Handle single and multithreaded
+    if args.maxthreads == 1:
+        # Single threaded
+        results = map(get_dosages, *function_args)
+    else:
+        # Multithreaded
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.maxthreads) as executor:
+            results = executor.map(get_dosages, *function_args)
 
-
-        # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
-        function_args = (repeat(model), individuals, haplotype_library_sample, repeat(args.calling_threshold))
-
-        # Get dosages for all individuals
-        if args.maxthreads == 1:
-            # Single threaded
-            results = map(get_dosages, *function_args)
-        else:
-            # Multithreaded
-            with concurrent.futures.ThreadPoolExecutor(max_workers=args.maxthreads) as executor:
-                results = executor.map(get_dosages, *function_args)
-
-        # Construct average dosages from results
-        for i, individual in enumerate(results):
-            dosages[i] += individual.dosages
-
-    # Normalize dosages and generate genotypes
-    # NOTE: the following block is temporary
-    # it would be better to average over genotype_probabilities and then
-    # use ProbMath.set_from_genotype_probs() to call genotypes
-    for i, individual in enumerate(individuals):
-        dosages[i] /= args.n_impute_rounds
-        if not np.allclose(individual.dosages, dosages[i]):
-            print(individual.idx, np.sum(np.abs(individual.dosages - dosages[i])))
-        individual.dosages = dosages[i]
+    # Run the imputation - get_dosages is not called until `results` is enumerated
+    for _ in results:
+        pass
 
 
 def set_seed(args):
@@ -355,14 +332,14 @@ def imputation(args, model, genotypes, library, coding): # pass coding via genot
     impute_individuals(model, args, genotypes, library)
 
     # Write out
-    print(f'Writing out {args.out}.dosages')
+    print(f'Writing genotype dosages to {args.out}.dosages')
     genotypes.writeDosages(f'{args.out}.dosages')
     if args.file_format == 'PLINK':
         genotypes.allele_coding = coding  # use the library coding
-        print(f'Writing out {args.out}.ped')
+        print(f'Writing genotypes to {args.out}.ped')
         genotypes.writeGenotypesPed(f'{args.out}.ped')
     else:
-        print(f'Writing out {args.out}.genotypes')
+        print(f'Writing genotypes to {args.out}.genotypes')
         genotypes.writeGenotypes(f'{args.out}.genotypes')
 
 
@@ -460,8 +437,8 @@ def check_arguments_consistent(args):
         print('ERROR: only one of -libped or -libphase should be specified\nExiting...')
         sys.exit(2)
 
-    if args.genotypes and (args.ped or args.bim):
-        print('ERROR: -genotypes and -ped/-bim cannot be specified together\n'
+    if args.genotypes and args.ped:
+        print('ERROR: -genotypes and -ped cannot be specified together\n'
               'Please only use one of -genotypes or -ped\nExiting...')
         sys.exit(2)
 
@@ -481,8 +458,10 @@ def check_arguments_consistent(args):
             print('ERROR: no haplotype library supplied. Please supply a library with the -lib option\nExiting...')
             sys.exit(2)
     if args.createlib:
-        if args.libped or args.libphase:  # This would be best moved to the create library function
-            print(f'Updating haplotype library FILENAME .phase or .ped/.bim from genotypes...\n')
+
+        if args.libped or args.libphase:
+            libfile = args.libped if args.libped else args.libphase
+            print(f'Updating haplotype library {libfile} from genotypes...\n')
         else:
             print('Creating haplotype library from genotypes...\n')
         if args.founders:
