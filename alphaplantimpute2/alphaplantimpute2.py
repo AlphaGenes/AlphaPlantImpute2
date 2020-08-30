@@ -41,15 +41,16 @@ def getargs():
     # Input options
     input_parser = parser.add_argument_group('Input Options')
     InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
-    input_parser.add_argument('-ped', default=None, required=False, type=str, nargs='*', help='A file in PLINK plain text format (.ped)')
-    input_parser.add_argument('-decode', default=None, required=False, type=str, nargs='*', help='Decode .ped files to AlphaImpute format.') # remove?
-    input_parser.add_argument('-libped', default=None, required=False, type=str, help='A haplotype library file in PLINK plain text format (.ped)')
-    input_parser.add_argument('-libphase', default=None, required=False, type=str, help='A haplotype library file in AlphaImpute phase format (.phase)')
-    input_parser.add_argument('-founders', default=None, required=False, type=str, help='A file that gives the founder individuals for each individual.')
-    input_parser.add_argument('-ncorrect', action='store_true', required=False, 
-                              help='When building a haplotype library, print the average number of loci that had to be corrected.')
-
-
+    input_parser.add_argument('-ped', default=None, required=False, type=str, nargs='*',
+                              help='A file in PLINK plain text format (.ped)')
+    input_parser.add_argument('-library', default=None, required=False, type=str,
+                              help='A haplotype library file in PLINK plain text format (.ped)')
+    input_parser.add_argument('-libphase', default=None, required=False, type=str,
+                              help='A haplotype library file in AlphaImpute phase format (.phase)')
+    input_parser.add_argument('-founders', default=None, required=False, type=str,
+                              help='A file that gives the founder individuals for each individual.')
+    input_parser.add_argument('-decode', default=None, required=False, type=str, nargs='*',
+                              help='Decode .ped files to AlphaImpute format.') # remove?
 
     # Algorithm options
     algorithm_parser = parser.add_argument_group('Algorithm Options')
@@ -58,15 +59,21 @@ def getargs():
                                   'Only high-density individuals are used to build the haplotype library. Default: 0.0.')
     algorithm_parser.add_argument('-n_haplotypes', default=100, required=False, type=int,
                                   help='Number of haplotypes to sample from the haplotype library. Default: 100.')
-    algorithm_parser.add_argument('-haploid', action='store_true', required=False, help='Run using a haploid HMM instead of the default diploid HMM.')
-    algorithm_parser.add_argument('-joint', action='store_true', required=False, help='Run using a joint HMM instead of the default diploid HMM.')
-    algorithm_parser.add_argument('-calling_threshold', default=0.1, required=False, type=float, help='Genotype calling threshold. '
+    algorithm_parser.add_argument('-haploid', action='store_true', required=False,
+                                  help='Run using a haploid HMM instead of the default diploid HMM.')
+    algorithm_parser.add_argument('-joint', action='store_true', required=False,
+                                  help='Run using a joint HMM instead of the default diploid HMM.')
+    algorithm_parser.add_argument('-calling_threshold', default=0.1, required=False, type=float,
+                                  help='Genotype calling threshold. '
                                   'Use a value less than 0.25 for best-guess genotypes. Default: 0.1.')
     algorithm_parser.add_argument('-n_sample_rounds', default=10, required=False, type=int,
                                   help='Number of rounds of library refinement. Default: 10.')
     algorithm_parser.add_argument('-n_bins', default=5, required=False, type=int,
                                   help='Number of bins for targeted haplotype sampling. Default: 5.')
-    InputOutput.add_arguments_from_dictionary(algorithm_parser, InputOutput.get_probability_options(), options=['error', 'recombination'])
+    algorithm_parser.add_argument('-ncorrect', action='store_true', required=False,
+                                  help='When building a haplotype library, print the average number of loci that had to be corrected.')
+    InputOutput.add_arguments_from_dictionary(algorithm_parser, InputOutput.get_probability_options(),
+                                              options=['error', 'recombination'])
     
     # Library options
     # library_parser = parser.add_argument_group('Haplotype Library Options')
@@ -282,12 +289,12 @@ def handle_inbreds(pedigree):
 
 def read_library(args):
     """Read in a haplotype library. Returns a HaplotypeLibrary() and allele coding array"""
-    assert args.libped or args.libphase
-    filename = args.libped if args.libped else args.libphase
+    assert args.library or args.libphase
+    filename = args.library if args.library else args.libphase
     print(f'Reading haplotype library from: {filename}')
     library = Pedigree.Pedigree()
-    if args.libped:
-        library.readInPed(args.libped, args.startsnp, args.stopsnp, haps=True, get_coding=True)
+    if args.library:
+        library.readInPed(args.library, args.startsnp, args.stopsnp, haps=True, get_coding=True)
     elif args.libphase:
         library.readInPhase(args.libphase, args.startsnp, args.stopsnp)
     else:
@@ -361,7 +368,7 @@ def create_library(args, model, genotypes, haplotype_library):
           f'and will be used to build the haplotype library')
 
     # Update an existing library with new genotypes
-    if args.libped or args.libphase:
+    if args.library or args.libphase:
         print(f"Updating haplotype library with {len(hd_individuals)} "
               f'high-density genotypes')
 
@@ -439,8 +446,8 @@ def check_arguments_consistent(args):
         print('ERROR: missing output prefix. Please specify one with -out\nExiting...')
         sys.exit(2)
 
-    if args.libped and args.libphase:
-        print('ERROR: only one of -libped or -libphase should be specified\nExiting...')
+    if args.library and args.libphase:
+        print('ERROR: only one of -library or -libphase should be specified\nExiting...')
         sys.exit(2)
 
     if args.genotypes and args.ped:
@@ -448,25 +455,25 @@ def check_arguments_consistent(args):
               'Please only use one of -genotypes or -ped\nExiting...')
         sys.exit(2)
 
-    if args.libped and args.genotypes:
-        print('ERROR: -libped and -genotypes cannot be specified together\n'
-              'Please use a consistent format, either -libped and -ped or -libphase and -genotypes\nExiting...')
+    if args.library and args.genotypes:
+        print('ERROR: -library and -genotypes cannot be specified together\n'
+              'Please use a consistent format, either -library and -ped or -libphase and -genotypes\nExiting...')
         sys.exit(2)
     elif args.libphase and args.ped:
         print('ERROR: -libphase and -ped cannot be specified together\n'
-              'Please use a consistent format, either -libped and -ped or -libphase and -genotypes\nExiting...')
+              'Please use a consistent format, either -library and -ped or -libphase and -genotypes\nExiting...')
         sys.exit(2)
 
     if args.impute:
         print('Imputing genotypes with haplotype library...\n')
         # Check requirements
-        if args.libped is None and args.libphase is None:
+        if args.library is None and args.libphase is None:
             print('ERROR: no haplotype library supplied. Please supply a library with the -lib option\nExiting...')
             sys.exit(2)
     if args.createlib:
 
-        if args.libped or args.libphase:
-            libfile = args.libped if args.libped else args.libphase
+        if args.library or args.libphase:
+            libfile = args.library if args.library else args.libphase
             print(f'Updating haplotype library {libfile} from genotypes...\n')
         else:
             print('Creating haplotype library from genotypes...\n')
@@ -569,12 +576,12 @@ def main():
     args.file_format = None  # Monkey patch args - makes it easy to pass to functions
     if args.genotypes or args.libphase:
         args.file_format = 'AlphaImpute'
-    elif args.ped or args.libped:
+    elif args.ped or args.library:
         args.file_format = 'PLINK'
 
     # Read library if one has been provided
     haplotype_library, library_coding = None, None
-    if args.libped or args.libphase:
+    if args.library or args.libphase:
         haplotype_library, library_coding = read_library(args)
 
     # Read genotypes (using library coding if provided)
