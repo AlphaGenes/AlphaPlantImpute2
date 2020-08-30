@@ -36,15 +36,14 @@ def getargs():
     core_parser = parser.add_argument_group('Core Options')
     core_parser.add_argument('-createlib', action='store_true', required=False, help='Create a haplotype library.')
     core_parser.add_argument('-impute', action='store_true', required=False, help='Impute individuals.')
-    core_parser.add_argument('-decodeped', action='store_true', required=False, help='Decode .ped files.') # remove?
-    core_parser.add_argument('-out', required=True, type=str, help='The output file prefix.')
+    core_parser.add_argument('-out', required=False, type=str, help='The output file prefix.')
 
     # Input options
     input_parser = parser.add_argument_group('Input Options')
     InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
     input_parser.add_argument('-ped', default=None, required=False, type=str, nargs='*', help='A file in PLINK plain text format (.ped)')
-    # input_parser.add_argument('-bim', default=None, required=False, type=str, nargs='*', help='A allele coding file in PLINK plain text format (.bim)')
-    input_parser.add_argument('-libped', default=None, required=False, type=str, help='A haplotype library file in PLINK plain text format (.ped & .bim)')
+    input_parser.add_argument('-decode', default=None, required=False, type=str, nargs='*', help='Decode .ped files to AlphaImpute format.') # remove?
+    input_parser.add_argument('-libped', default=None, required=False, type=str, help='A haplotype library file in PLINK plain text format (.ped)')
     input_parser.add_argument('-libphase', default=None, required=False, type=str, help='A haplotype library file in AlphaImpute phase format (.phase)')
     input_parser.add_argument('-founders', default=None, required=False, type=str, help='A file that gives the founder individuals for each individual.')
     input_parser.add_argument('-ncorrect', action='store_true', required=False, 
@@ -404,7 +403,7 @@ def read_genotypes(args, allele_coding=None):
 
     InputOutput.readInPedigreeFromInputs(genotypes, args, genotypes=True, haps=False, reads=False, get_coding=get_coding)
     if len(genotypes) == 0:
-        print('ERROR: no genotypes supplied. Please supply them with the -genotypes or -ped/-bim options\nExiting...')
+        print('ERROR: no genotypes supplied. Please supply them with the -genotypes or -ped options\nExiting...')
         sys.exit(2)
     print(f'Read in {len(genotypes)} individuals with {genotypes.nLoci} markers')
 
@@ -423,17 +422,22 @@ def check_arguments_consistent(args):
     """Checks that a consistent set of arguments has been supplied"""
 
     # Check one and only one of the major arguments are supplied
-    n = np.sum(args.createlib or args.impute or args.decodeped)
+    decode = args.decode is not None
+    n = args.createlib + args.impute + decode
     if n == 0:
-        print('ERROR: one of -createlib, -impute or -decodeped needs to be specified\nExiting...')
+        print('ERROR: one of -createlib, -impute or -decode needs to be specified\nExiting...')
         sys.exit(2)
     elif n > 1:
-        print('ERROR: only one of -createlib, -impute or -decodeped should be specified\nExiting...')
+        print('ERROR: only one of -createlib, -impute or -decode should be specified\nExiting...')
         sys.exit(2)
 
-    # Temp
-    if args.decodeped:
+    # If -decode is chosen, return as no more checks are required
+    if args.decode:
         return
+
+    if not args.out:
+        print('ERROR: missing output prefix. Please specify one with -out\nExiting...')
+        sys.exit(2)
 
     if args.libped and args.libphase:
         print('ERROR: only one of -libped or -libphase should be specified\nExiting...')
@@ -486,7 +490,7 @@ def read_in_founders(filename, pedigree, haplotype_library):
             focal_ids += [individual.idx]
         except KeyError:
             print(f'ERROR: individual {identifier} not found in genotype '
-                  f'(files read in with -ped or -genotypes)\nExiting...')
+                  f'files read in with -ped or -genotypes\nExiting...')
             sys.exit(2)
         founder_ids.update(split_line[1:])
         individual.founders = split_line[1:]
@@ -508,7 +512,27 @@ def read_in_founders(filename, pedigree, haplotype_library):
               f'not found in haplotype library\nExiting...')
         sys.exit(2)
 
-@profile
+
+def decode(args):
+    """Read in a number of .ped files and decode to AlphaImpute format (.genotypes)
+    The allele coding is read (interpreted) from the first .ped file"""
+    print(f"Decoding: {', '.join(args.decode)}")
+    get_coding = True  # get the coding from the first ped file
+    allele_coding = None
+    for pedfile in args.decode:
+        basename = pedfile.split('.')[0]
+        pedigree = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
+        pedigree.allele_coding = allele_coding
+        print(f'  Reading and decoding {pedfile}...')
+        pedigree.readInPed(pedfile, args.startsnp, args.stopsnp, haps=True, get_coding=get_coding)
+        print(f'  Writing decoded file to {basename}.genotypes')
+        pedigree.writeGenotypes(f'{basename}.genotypes')
+        
+        # Use previously read allele coding for each subsequent file
+        get_coding = False
+        allele_coding = pedigree.allele_coding
+
+
 def main():
     """Main execution code"""
 
@@ -525,19 +549,21 @@ def main():
     # Set random seed
     set_seed(args)
 
-    if args.decodeped:
-        true = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
-        true.readInPed('true.ped', args.startsnp, args.stopsnp, haps=False, get_coding=True)
-        true.writeGenotypes('true.recoded')
-        masked = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
-        masked.allele_coding = true.allele_coding
-        masked.readInPed('masked.ped', args.startsnp, args.stopsnp, haps=False, get_coding=False)
-        masked.writeGenotypes('masked.recoded')
-        imputed = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
-        imputed.allele_coding = true.allele_coding
-        imputed.readInPed('imputed.ped', args.startsnp, args.stopsnp, haps=False, get_coding=False)
-        imputed.writeGenotypes('imputed.recoded')
-        sys.exit(2)
+    if args.decode:
+        decode(args)
+        sys.exit(0)
+        # true = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
+        # true.readInPed('true.ped', args.startsnp, args.stopsnp, haps=False, get_coding=True)
+        # true.writeGenotypes('true.recoded')
+        # masked = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
+        # masked.allele_coding = true.allele_coding
+        # masked.readInPed('masked.ped', args.startsnp, args.stopsnp, haps=False, get_coding=False)
+        # masked.writeGenotypes('masked.recoded')
+        # imputed = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
+        # imputed.allele_coding = true.allele_coding
+        # imputed.readInPed('imputed.ped', args.startsnp, args.stopsnp, haps=False, get_coding=False)
+        # imputed.writeGenotypes('imputed.recoded')
+        # sys.exit(2)
 
     # Are we using PLINK plain text or AlphaImpute format
     args.file_format = None  # Monkey patch args - makes it easy to pass to functions
