@@ -68,18 +68,13 @@ def getargs():
                                   'Use a value less than 0.25 for best-guess genotypes. Default: 0.1.')
     algorithm_parser.add_argument('-n_sample_rounds', default=10, required=False, type=int,
                                   help='Number of rounds of library refinement. Default: 10.')
-    algorithm_parser.add_argument('-n_bins', default=5, required=False, type=int,
+    algorithm_parser.add_argument('-n_windows', default=5, required=False, type=int,
                                   help='Number of bins for targeted haplotype sampling. Default: 5.')
-    algorithm_parser.add_argument('-ncorrect', action='store_true', required=False,
-                                  help='When building a haplotype library, print the average number of loci that had to be corrected.')
     InputOutput.add_arguments_from_dictionary(algorithm_parser, InputOutput.get_probability_options(),
                                               options=['error', 'recombination'])
+    algorithm_parser.add_argument('-ncorrect', action='store_true', required=False,
+                                  help='When building a haplotype library, print the average number of loci that had to be corrected.')
     
-    # Library options
-    # library_parser = parser.add_argument_group('Haplotype Library Options')
-    # library_parser.add_argument('-library', required=False, type=str, help='A haplotype library file in [TBD] format. '
-    #                             'Read the haplotype library from file rather than building it from high-density individuals.')
-
     # Multithreading options
     multithread_parser = parser.add_argument_group('Multithreading Options')
     InputOutput.add_arguments_from_dictionary(multithread_parser, InputOutput.get_multithread_options(), options=['maxthreads', 'iothreads'])
@@ -242,7 +237,7 @@ def impute_individuals(model, args, pedigree, haplotype_library):
     else:
         haplotype_library_sample = (haplotype_library.sample_targeted(args.n_haplotypes,
                                                                         individual.genotypes,
-                                                                        args.n_bins)
+                                                                        args.n_windows)
                                     for individual in individuals)
 
     # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
@@ -320,9 +315,10 @@ def write_library(args, library, allele_coding):
     for idx, haplotype in library:
         individual = pedigree.getIndividual(idx)
         if individual.haplotypes is None:
-            individual.haplotypes = haplotype
+            individual.haplotypes = haplotype  # first haplotype
         else:
-            individual.haplotypes = np.vstack([individual.haplotypes, haplotype])
+            individual.haplotypes = np.vstack([individual.haplotypes, haplotype])  # second haplotype
+
     # Write out
     if args.file_format == 'PLINK':
         print(f'Writing haplotype library to {args.out}.ped')
@@ -440,6 +436,7 @@ def check_arguments_consistent(args):
 
     # If -decode is chosen, return as no more checks are required
     if args.decode:
+        print('Decoding PLINK .ped files to AlphaImpute format...\n')
         return
 
     if not args.out:
@@ -482,7 +479,7 @@ def check_arguments_consistent(args):
             sys.exit(2)
 
 
-def read_in_founders(filename, pedigree, haplotype_library):
+def read_founders(filename, pedigree, haplotype_library):
     """Read in founders from file modifying the supplied pedigree with that information"""
     print(f'Reading founders from {filename}...')
     focal_ids = []
@@ -494,16 +491,17 @@ def read_in_founders(filename, pedigree, haplotype_library):
         identifier = split_line[0]
         try:
             individual = pedigree[identifier]
-            focal_ids += [individual.idx]
         except KeyError:
-            print(f'ERROR: individual {identifier} not found in genotype '
-                  f'files read in with -ped or -genotypes\nExiting...')
-            sys.exit(2)
-        founder_ids.update(split_line[1:])
-        individual.founders = split_line[1:]
-        if len(individual.founders) == 0:
-            print(f'ERROR: individual {individual.idx} has no founders\nExiting...')
-            sys.exit(2)
+            print(f'WARNING: individual {identifier} not found in genotype '
+                  f'files (as read in with -ped or -genotypes) and will be ignored')
+            continue
+        founders = split_line[1:]
+        if len(founders) == 0 or set(founders) == {'0'}:
+            print(f'WARNING: individual {individual.idx} has no founders and will be ignored')
+        else:
+            focal_ids += [individual.idx]
+            founder_ids.update(split_line[1:])
+            individual.founders = split_line[1:]
 
     # Remove non focal ids from pedigree - a bit ugly but simplifies a lot of subsequent code
     ids_to_remove = set(i.idx for i in pedigree) - set(focal_ids)
@@ -513,6 +511,7 @@ def read_in_founders(filename, pedigree, haplotype_library):
     print(f'Read in {len(focal_ids)} focal individuals, which will be imputed')
 
     # Check all founders are in the haplotype library
+    #founder_ids = founder_ids - {'0'}  # remove any unknown founders (coded as '0')
     diff = founder_ids - set(haplotype_library._identifiers)
     if len(diff) > 0:
         print(f'ERROR: focal individuals: {list(diff)}\n'
@@ -591,7 +590,7 @@ def main():
     # Read founders if supplied
     focal_ids = None
     if args.founders:
-         read_in_founders(args.founders, genotypes, haplotype_library)
+         read_founders(args.founders, genotypes, haplotype_library)
 
     # Probabilistic rates
     error_rate = np.full(n_loci, args.error, dtype=np.float32)
