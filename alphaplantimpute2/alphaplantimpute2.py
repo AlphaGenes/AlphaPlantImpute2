@@ -40,7 +40,7 @@ def getargs():
 
     # Input options
     input_parser = parser.add_argument_group('Input Options')
-    InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'pedigree', 'startsnp', 'stopsnp', 'seed'])
+    InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'startsnp', 'stopsnp', 'seed'])
     input_parser.add_argument('-ped', default=None, required=False, type=str, nargs='*',
                               help='A file in PLINK plain text format (.ped)')
     input_parser.add_argument('-library', default=None, required=False, type=str,
