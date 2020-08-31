@@ -69,7 +69,7 @@ def getargs():
     algorithm_parser.add_argument('-n_sample_rounds', default=10, required=False, type=int,
                                   help='Number of rounds of library refinement. Default: 10.')
     algorithm_parser.add_argument('-n_windows', default=5, required=False, type=int,
-                                  help='Number of bins for targeted haplotype sampling. Default: 5.')
+                                  help='Number of windows for targeted haplotype sampling. Default: 5.')
     InputOutput.add_arguments_from_dictionary(algorithm_parser, InputOutput.get_probability_options(),
                                               options=['error', 'recombination'])
     algorithm_parser.add_argument('-ncorrect', action='store_true', required=False,
