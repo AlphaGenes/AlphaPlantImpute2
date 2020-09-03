@@ -46,11 +46,11 @@ def getargs():
     input_parser.add_argument('-library', default=None, required=False, type=str,
                               help='A haplotype library file in PLINK plain text format (.ped)')
     input_parser.add_argument('-libphase', default=None, required=False, type=str,
-                              help='A haplotype library file in AlphaImpute phase format (.phase)')
+                              help='A haplotype library file in AlphaGenes phase format (.phase)')
     input_parser.add_argument('-founders', default=None, required=False, type=str,
                               help='A file that gives the founder individuals for each individual.')
     input_parser.add_argument('-decode', default=None, required=False, type=str, nargs='*',
-                              help='Decode .ped files to AlphaImpute format.') # remove?
+                              help='Decode .ped files to AlphaGenes format.') # remove?
 
     # Algorithm options
     algorithm_parser = parser.add_argument_group('Algorithm Options')
@@ -65,15 +65,16 @@ def getargs():
                                   help='Run using a joint HMM instead of the default diploid HMM.')
     algorithm_parser.add_argument('-calling_threshold', default=0.1, required=False, type=float,
                                   help='Genotype calling threshold. '
-                                  'Use a value less than 0.25 for best-guess genotypes. Default: 0.1.')
+                                  'Controls whether uncertain (imputed) loci are marked as missing. Default: 0.1.')
     algorithm_parser.add_argument('-n_sample_rounds', default=10, required=False, type=int,
                                   help='Number of rounds of library refinement. Default: 10.')
     algorithm_parser.add_argument('-n_windows', default=5, required=False, type=int,
                                   help='Number of windows for targeted haplotype sampling. Default: 5.')
     InputOutput.add_arguments_from_dictionary(algorithm_parser, InputOutput.get_probability_options(),
                                               options=['error', 'recombination'])
-    algorithm_parser.add_argument('-ncorrect', action='store_true', required=False,
-                                  help='When building a haplotype library, print the average number of loci that had to be corrected.')
+    algorithm_parser.add_argument('-incorrect_loci', action='store_true', required=False,
+                                  help='When building a haplotype library, print the average number of loci '
+                                  'that were incorrectly sampled from the hidden Markov model.')
     
     # Multithreading options
     multithread_parser = parser.add_argument_group('Multithreading Options')
@@ -209,7 +210,7 @@ def refine_library(model, args, individuals, haplotype_library, maf):
             else:
                 n_corrected += correct_haplotypes(haplotypes[0], haplotypes[1], individual.genotypes, maf)
                 haplotype_library.update(np.array(haplotypes), individual.idx)
-        if args.ncorrect:
+        if args.incorrect_loci:
             print(f'  corrected loci: {n_corrected/len(individuals):.3g}')
 
 
@@ -436,7 +437,7 @@ def check_arguments_consistent(args):
 
     # If -decode is chosen, return as no more checks are required
     if args.decode:
-        print('Decoding PLINK .ped files to AlphaImpute format...\n')
+        print('Decoding PLINK .ped files to AlphaGenes format...\n')
         return
 
     if not args.out:
@@ -520,7 +521,7 @@ def read_founders(filename, pedigree, haplotype_library):
 
 
 def decode(args):
-    """Read in a number of .ped files and decode to AlphaImpute format (.genotypes)
+    """Read in a number of .ped files and decode to AlphaGenes format (.genotypes)
     The allele coding is read (interpreted) from the first .ped file"""
     print(f"Decoding: {', '.join(args.decode)}")
     get_coding = True  # get the coding from the first ped file
@@ -571,10 +572,10 @@ def main():
         # imputed.writeGenotypes('imputed.recoded')
         # sys.exit(2)
 
-    # Are we using PLINK plain text or AlphaImpute format
+    # Are we using PLINK plain text or AlphaGenes format
     args.file_format = None  # Monkey patch args - makes it easy to pass to functions
     if args.genotypes or args.libphase:
-        args.file_format = 'AlphaImpute'
+        args.file_format = 'AlphaGenes'
     elif args.ped or args.library:
         args.file_format = 'PLINK'
 
