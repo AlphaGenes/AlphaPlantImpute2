@@ -22,12 +22,12 @@ Please report any issues to `alphagenes@roslin.ed.ac.uk <alphagenes@roslin.ed.ac
 
 Conditions of use
 -----------------
-|program| is part of a suite of software that the AlphaGenes group has developed. It is currently only availble for use by KWS SAAT SE & Co. KGaA. All other interested parties are requested to contact John M Hickey (`John.Hickey@roslin.ed.ac.uk <John.Hickey@roslin.ed.ac.uk>`_) to discuss the terms of use.
+|program| is part of a suite of software that the AlphaGenes group has developed. It is only availble for academic use. All other interested parties are requested to contact John M Hickey (`John.Hickey@roslin.ed.ac.uk <John.Hickey@roslin.ed.ac.uk>`_) to discuss the terms of use.
 
 Authorship
 ----------
 
-|program| is part of a body of imputation software developed by the AlphaGenes group under John M Hickey. It is based on the hidden Markov model (HMM) developed by Roberto Antolín in AlphaImpute (Antolín et al. 2017), and is similar to the algorithm used in MaCH (Li et al. 2011). |program| was written by Steve Thorn and Andrew Whalen.
+|program| is part of a body of imputation software developed by the AlphaGenes group under John M Hickey. It is based on the hidden Markov model (HMM) developed by Roberto Antolín in AlphaImpute (Antolín et al. 2017), and is similar to the algorithm used in MaCH (Li et al. 2010). |program| was written by Steve Thorn and Andrew Whalen.
 
 Disclaimer
 ----------
@@ -46,19 +46,19 @@ Haplotype library creation
 
 Haplotype library creation starts with randomly phasing the genotypes of high-density individuals. High-density individuals are those with a fraction of non-missing markers greater than a given threshold, which can be specified with the ``-hd_threshold`` option. Homozygous loci are de-facto phased; heterozygous loci are randomly assigned with equal probability and missing loci are randomly assigned according to allele frequency.
 
-Secondly, the haplotypes are refined in an iterative process. Each haplotype in the library is refined using a hidden Markov model, which can be a haploid model (``-haploid``), diploid model (the default), or _joint_ model, which models loci as either haploid or diploid (``-joint``). The hidden states (at each locus) are either haplotypes in the library, or pairs of haplotypes. The model randomly generates a haplotype, or pair of haplotypes, according to the HMM probabilities. At each iteration, the number of haplotypes considered by the HMM is reduced by randomly sampling a number of haplotypes (``-n_haplotypes``). This number is a trade-off between higher imputation accuracy (higher numbers of haplotypes) and faster computation time (lower numbers). Once each haplotype has been generated, the process iterates for a number of rounds (``-n_sample_rounds``) to refine the haplotypes. A small number of rounds (for example, 5) is usually sufficient to accurately estimate the haplotypes.
+The haplotypes are refined in an iterative process. Each haplotype in the library is refined using a hidden Markov model (HMM), which can be a haploid model (``-haploid``), diploid model (the default), or *joint* model, which models loci as either haploid or diploid (``-joint``). The hidden states (at each locus) are either haplotypes in the library, or pairs of haplotypes. The model randomly generates a haplotype, or pair of haplotypes, according to the HMM probabilities. At each iteration, the number of haplotypes considered by the HMM is reduced by randomly sampling a number of haplotypes (``-n_haplotypes``). This number is a trade-off between higher accuracy (higher numbers of haplotypes) and faster computation time (lower numbers). Once each haplotype has been generated, the process iterates for a number of rounds (``-n_sample_rounds``) to refine the haplotypes. A small number of rounds (for example, 5) is usually sufficient to accurately estimate the haplotypes.
 
-Once a haplotype library has been built, it can be updated with new genotypes using much the same process. The new genotypes are iteratively phased using the exiting haplotypes from the library as reference. The newly phased haplotypes are added to the library and then written to file.
-    
+Once a haplotype library has been built, it can be updated with new genotypes using a similar process. The new genotypes are iteratively phased using the existing haplotypes from the library as reference. The newly phased haplotypes are added to the library and then written to file. Haplotype libraries can be reused multiple times to impute low-density individuals for the same crop. 
+
 
 Imputation
 ----------
 
 |program| will impute individuals if the ``-impute`` option is given. 
 
-Each individual's genotype is imputed using the same hidden Markov Model used for library creation, with haplotypes from the provided haplotype library (``-library`` or ``-libphase``) as hidden states. The number of haplotypes considered (``-n_haplotypes``) is reduced by a _targeted_ sampling of haplotypes from the library. Targeted sampling chooses haplotypes that have the fewest opposite homozygous markers compared to the focal individual within a window of markers. The number of windows the chromosome is divided into is specified by ``-n_windows``. Haplotypes are randomly sampled in the case where many haplotypes have the same number of opposite homozygous markers. The hidden Markov model determines the probabilities for each genotype at a given locus. These probabilities are used to calculate the genotype dosages (expectation value of the genotypes) and genotypes themselves, which is the genotype with largest probability. The ``-calling_threshold`` option affects whether loci with close probabilities are called as missing. For example, with the diploid HMM, there are three probabilities per locus — one for each of the three possible genotypes: {0, 1, 2}. Setting a calling threshold of 0.4 would set an imputed marker to missing if the maximum probability was less than this threshold. A value less than 0.333 (diploid) or less than 0.5 (haploid) will not change any marker to missing.
+Each individual is imputed using the same hidden Markov model used for library creation, with haplotypes from the provided haplotype library (``-library`` or ``-libphase``) as hidden states. The number of haplotypes considered (``-n_haplotypes``) is reduced by a *targeted* sampling of haplotypes from the library. Targeted sampling chooses haplotypes that have the fewest opposite homozygous markers compared to the focal individual within a window of markers. The number of windows the chromosome is divided into is specified by ``-n_windows``. Haplotypes are randomly sampled in the case where many haplotypes have the same number of opposite homozygous markers. The hidden Markov model determines the probabilities of the possible genotypes for a focal individual at all loci. These probabilities are used to calculate the genotype dosages (expectation value of the genotypes) and called genotypes (the genotype with the largest probability). The ``-calling_threshold`` option can be used to call uncertain loci as missing. For example, with the diploid HMM, there are three probabilities per locus — one for each of the three possible genotypes: {0, 1, 2}. Setting a calling threshold of 0.4 would set an imputed marker to missing if the maximum probability of the three possible genotypes was less than this threshold. A value less than 0.333 (diploid) or less than 0.5 (haploid) will not change any marker to missing.
 
-If pedigree information is known, it can be used to target the haplotypes used for imputation. A founders file (``-founders``) specifies the parents or founders of the individuals that are to be imputed. The imputation is then restricted to using only founder haplotypes (contained in the haplotype library).
+If pedigree information is known, it can be used to target haplotypes used for imputation. A founders file (``-founders``) specifies the parents or founders of the focal individuals. The imputation is then restricted to using only founder haplotypes contained in the haplotype library.
 
 
 Program options
@@ -77,32 +77,31 @@ Core options
       
 The ``-createlib`` and ``-impute`` options specify which kind of task |program| should do. 
 
-The ``-out`` argument specifies the output file prefix. For example, with ``-out prefix``, |program| outputs the imputed genotypes to ``prefix.ped`` and genotype dosages to ``prefix.dosages``.
+The ``-out`` argument specifies the output file prefix. For example, with ``-out imputed``, |program| outputs the imputed genotypes to ``imputed.ped`` and genotype dosages to ``imputed.dosages``.
 
 
 Input options 
 ----------------
 ::
 
-      -genotypes [GENOTYPES [GENOTYPES ...]]
-                            A file in AlphaGenes format.
-      -startsnp STARTSNP    The first marker to consider. The first marker in the
-                            file is marker "1".
-      -stopsnp STOPSNP      The last marker to consider.
-      -seed SEED            A random seed to use for debugging.
-      -ped [PED [PED ...]]  A file in PLINK plain text format (.ped)
+      -ped [PED [PED ...]]  A genotype file in PLINK plain text format (.ped)
       -library LIBRARY      A haplotype library file in PLINK plain text format
                             (.ped)
-      -libphase LIBPHASE    A haplotype library file in AlphaGenes phase format
-                            (.phase)
       -founders FOUNDERS    A file that gives the founder individuals for each
                             individual.
+      -startsnp STARTSNP    The first marker to consider. The first marker in the
+                            file is marker '1'. Default: 1.
+      -stopsnp STOPSNP      The last marker to consider. Default: all markers
+                            considered.
+      -seed SEED            A random seed to use for debugging.
+      -genotypes [GENOTYPES [GENOTYPES ...]]
+                            A file in AlphaGenes format.
+      -libphase LIBPHASE    A haplotype library file in AlphaGenes phase format
+                            (.phase)
       -decode [DECODE [DECODE ...]]
                             Decode .ped files to AlphaGenes format.
       
-|program| requires one or more genotype files and, optionally, a pedigree file that specifies whether individuals are inbred/double haploid or outbred.
-
-|program| supports genotype files in the AlphaGenes format as specified by the ``-genotypes`` option. A pedigree file can be supplied using the ``-pedigree`` option. 
+|program| supports genotype files in PLINK plain text (.ped) format as specified by the ``-ped`` and ``-library`` options. AlphaGenes format is also supported with the ``-genotypes`` and ``-libphase`` options. It is not recommened to mix the two file types in an imputation workflow.
 
  
 Algorithm options 
@@ -134,7 +133,7 @@ Algorithm options
                             number of loci that were incorrectly sampled from the
                             hidden Markov model.
 
-THE ``-incorrect_loci`` option displays diagnostic information that can be used to assess the quality of haplotype library creation. It shows the average number (averaged over individuals) of loci that were incorrectly sampled from the hidden Markov model. A smaller number is better. In particular, it shows when additional sampling rounds (``-n_sample_rounds`` option) give no improvement (the number of incorrect loci does not improve). If this happens, the accuracy can be increased by increasing the number of sampled haplotypes (``-n_haplotypes``) rather than use more sampling rounds.
+The ``-incorrect_loci`` option displays diagnostic information that can be used to assess the quality of haplotype library creation. It shows the average number (averaged over individuals) of loci that were incorrectly sampled from the hidden Markov model. A smaller number is better. In particular, it shows when additional sampling rounds (``-n_sample_rounds`` option) give no improvement (the number of incorrect loci does not improve). If this happens, the accuracy can be increased by increasing the number of sampled haplotypes (``-n_haplotypes``) rather than using more sampling rounds.
 
 Multithreading options
 ------------------------
@@ -154,13 +153,13 @@ Example usage
 
 Population based imputation
 ---------------------------
-First, create a haplotype library from high-density genotyped individuals in the population.
+The first step in a population imputation scenario is to create a haplotype library from high-density genotyped individuals.
 ::
-AlphaPlantImpute2 -createlib -out library -ped high_density.ped 
+  AlphaPlantImpute2 -createlib -out library -ped high_density.ped 
 
-This step saves the haplotype library to ``library.ped``. Then the low-density individuals are imputed using this library.
+The haplotype library is saved to ``library.ped``. Low-density, focal individuals are then imputed using this library.
 ::
-AlphaPlantImpute2 -impute -out imputed -library library.ped -ped low_density.ped
+  AlphaPlantImpute2 -impute -out imputed -library library.ped -ped low_density.ped
 
 Imputed dosages are saved to ``imputed.dosages`` and imputed genotypes to ``imputed.ped``.
 
@@ -168,22 +167,27 @@ Imputed dosages are saved to ``imputed.dosages`` and imputed genotypes to ``impu
 Pedigree based imputation
 -------------------------
 
-When the pedigree is known this information can be used to choose specific haplotypes (from the haplotype library) to be used for imputation.
+When the pedigree is known, this information can be used to choose specific haplotypes (from the haplotype library) to be used for imputation. A typical workflow starts with the creation of a haplotype library from high-density, founder genotypes.
+::
+  AlphaPlantImpute2 -createlib -out library -ped high_density_founders.ped
+
+The founders for each focal individual are specified with the ``-founders`` option. Then, the imputation of the focal individuals only uses the corresponding founder haplotypes.
+::
+  AlphaPlantImpute2 -impute -out imputed -library library.ped -ped low_density_offspring.ped -founder founders.txt
 
 
 Updating a haplotype library 
 -----------------------------
 A haplotype library can be updated with new genotypes. The following example updates the library ``library.ped`` with genotypes from the file ``genotypes.ped``. The updated library is saved to ``library_new.ped``.
 ::
-AlphaPlantImpute2 -createlib -library library.ped -ped genotypes.ped -out library_new 
+  AlphaPlantImpute2 -createlib -library library.ped -ped genotypes.ped -out library_new 
 
 
 Converting PLINK .ped files to AlphaGenes format
 -------------------------------------------------
-PLINK .ped files can be converted to AlphaGenes format with the ``-decode`` option. The coding from alleles in the .ped file to AlphaGenes genotypes is determined by the first .ped file given. At any locus the first allele encountered in the file is coded as 0 and the second as 1. The genotypes written to the AlphaGenes format file is then the sum of the two alleles. The following converts two .ped files to two AlphaGenes files (``library.genotypes`` and ``imputed.genotypes``) using the allele coding interpreted from ``library.ped``.
+PLINK .ped files can be converted to AlphaGenes format with the ``-decode`` option. The coding from alleles in the .ped file to AlphaGenes genotypes is determined by the first .ped file given. At any locus the first allele encountered in the file is coded as 0 and the second as 1. The genotypes written to the AlphaGenes format file is then the sum of the two alleles. The following, converts two .ped files to two AlphaGenes files (``library.genotypes`` and ``imputed.genotypes``) using the allele coding interpreted from ``library.ped``.
 ::
-AlphaPlantImpute2 -decode library.ped imputed.ped
-
+  AlphaPlantImpute2 -decode library.ped imputed.ped
 
 
 Input file formats
@@ -192,7 +196,7 @@ Input file formats
 PLINK .ped files
 ----------------
 
-PLINK .ped files contain genotypes for each individual. |program| reads the individuals' identifiers from the second field (the within family identifier). The allele calls are read from fields seven onwards. Fields are assumed to be whitespace delimited. All other fields are ignored. The following example gives the genotypes for four individuals genotyped on four markers.
+PLINK .ped files contain genotypes for each individual. |program| reads the individuals' identifiers from the second field (the within family identifier). The allele calls are read from field seven onwards. Fields are assumed to be whitespace delimited. Missing data are represented with 0. All other fields are ignored. The following example shows four individuals genotyped on four markers.
 
 Example: ::
 
@@ -204,7 +208,7 @@ Example: ::
 AlphaGenes genotypes file 
 --------------------------
 
-AlphaGenes genotypes files contain the input genotypes for each individual. The first value in each line is the individual's identifier. The remaining values are the genotypes of the individual at each locus, either 0, 1, or 2 (or 9 if missing). The following example shows four individuals genotyped on four markers.
+AlphaGenes genotypes files contain genotypes for each individual. The first value in each line is the individual's identifier. The remaining values are the genotypes of the individual at each locus, either 0, 1, or 2 (or 9 if missing). Fields are whitespace delimited. The following example shows four individuals genotyped on four markers.
 
 Example: ::
 
@@ -232,12 +236,12 @@ Output file formats
 PLINK .ped files
 ----------------
 
-Haplotype libraries and imputed genotypes are written as PLINK .ped files when the ``-ped`` and/or ``-library`` options are given. Haplotype libraries are written as phased alleles - the first alleles in each pair are for one haplotype, the second alleles are for the other haplotype. Imputed genotypes are written in an unphased way such that the order of alleles has no significance.
+Haplotype libraries and imputed genotypes are written as PLINK .ped files when the ``-ped`` option is given. Haplotype libraries are written as phased alleles - the first alleles in each pair are for one haplotype, the second alleles are for the other haplotype. Imputed genotypes are written in an unphased way such that the order of alleles has no significance.
 
 AlphaGenes format files
 -----------------------
 
-Haplotype libraries and imputed genotypes are written in AlphaGenes genotype format when the ``-genotypes`` and/or ``-libphase`` options are given. Imputed genotypes are written in the format as described for input files above. Haplotype libraries are written in a similar format, with one haplotype per line. The following example shows the two haplotypes for two individuals:
+Haplotype libraries and imputed genotypes are written in AlphaGenes genotype format when the ``-genotypes`` option is given. Imputed genotypes are written in the format as described for input files above. Haplotype libraries are written in a similar format, except with one haplotype per line. The following example shows the two haplotypes for two individuals:
 
 Example: ::
 
@@ -250,7 +254,7 @@ Example: ::
 Dosage file
 -----------
 
-The dosage file gives the expected allele dosage for the alternative (or minor) allele for each imputed individual. The first value in each line is the individual's identifier. The remaining values are the allele dosages at each locus. If there is a lot of uncertainty in the underlying genotype calls, this file can often prove more accurate than the called genotype values.
+The dosage file gives the expected allele dosage for the alternative allele (coded as 1) for each imputed individual. The first value in each line is the individual's identifier. The remaining values are the allele dosages at each locus. If there is a lot of uncertainty in the underlying genotype calls, this file can often prove more accurate than the called genotype values.
 
 Example: ::
 
@@ -259,5 +263,14 @@ Example: ::
   id3    2.0000    0.0000    2.0000    0.0001
   id4    0.0000    2.0000    1.0000    0.0000
 
+
+References
+~~~~~~~~~~
+
+Antolín, R., Nettelblad, C., Gorjanc, G., Money, D., Hickey, J.M., 2017. A hybrid method for the imputation of genomic data in livestock populations. Genetics Selection Evolution 49, 30.
+
+Li, Y., Willer, C.J., Ding, J., Scheet, P., Abecasis, G.R., 2010. MaCH: Using Sequence and Genotype Data to Estimate Haplotypes and Unobserved Genotypes. Genet Epidemiol 34, 816–834.
+
+Rabiner, L., 1986. An introduction to hidden Markov models. IEEE ASSP Magazine 4–16.
 
 .. |program| replace:: AlphaPlantImpute2
