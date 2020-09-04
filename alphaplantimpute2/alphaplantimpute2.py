@@ -40,15 +40,15 @@ def getargs():
 
     # Input options
     input_parser = parser.add_argument_group('Input Options')
-    InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['genotypes', 'startsnp', 'stopsnp', 'seed'])
     input_parser.add_argument('-ped', default=None, required=False, type=str, nargs='*',
-                              help='A file in PLINK plain text format (.ped)')
+                              help='A genotypes file in PLINK plain text format (.ped)')
     input_parser.add_argument('-library', default=None, required=False, type=str,
                               help='A haplotype library file in PLINK plain text format (.ped)')
-    input_parser.add_argument('-libphase', default=None, required=False, type=str,
-                              help='A haplotype library file in AlphaGenes phase format (.phase)')
     input_parser.add_argument('-founders', default=None, required=False, type=str,
                               help='A file that gives the founder individuals for each individual.')
+    InputOutput.add_arguments_from_dictionary(input_parser, InputOutput.get_input_options(), options=['startsnp', 'stopsnp', 'seed', 'genotypes'])
+    input_parser.add_argument('-libphase', default=None, required=False, type=str,
+                              help='A haplotype library file in AlphaGenes phase format (.phase)')
     input_parser.add_argument('-decode', default=None, required=False, type=str, nargs='*',
                               help='Decode .ped files to AlphaGenes format.') # remove?
 
