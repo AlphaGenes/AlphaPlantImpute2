@@ -120,6 +120,10 @@ def generate_haplotypes(genotype, maf):
             p_hap[i] = np.random.binomial(1, p=maf[i])
             m_hap[i] = np.random.binomial(1, p=maf[i])
         else:
+            print(i)
+            print(genotype[i])
+            print(genotype.dtype)
+            print(genotype)
             raise ValueError('Genotype not in {0,1,2,9}')
 
     return p_hap, m_hap
@@ -290,7 +294,7 @@ def read_library(args):
     print(f'Reading haplotype library from: {filename}')
     library = Pedigree.Pedigree()
     if args.library:
-        library.readInPed(args.library, args.startsnp, args.stopsnp, haps=True, get_coding=True)
+        library.readInPed(args.library, args.startsnp, args.stopsnp, haps=True, update_coding=True)
     elif args.libphase:
         library.readInPhase(args.libphase, args.startsnp, args.stopsnp)
     else:
@@ -355,6 +359,7 @@ def create_library(args, model, genotypes, haplotype_library):
     genotypes.set_high_density()
     hd_individuals = [individual for individual in genotypes if individual.is_high_density]
 
+
     # Error if there are no high-density individuals
     if len(hd_individuals) == 0:
         print(f'ERROR: zero individuals genotyped at high-density\n'
@@ -398,16 +403,11 @@ def read_genotypes(args, allele_coding=None):
     """Read genotypes from file(s)"""
     print('Reading genotypes...')
     genotypes = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
+    genotypes.allele_coding = allele_coding
 
-    # Use provided coding if given
-    get_coding = True
-    if allele_coding is not None:
-        genotypes.allele_coding = allele_coding
-        get_coding = False
-
-    InputOutput.readInPedigreeFromInputs(genotypes, args, genotypes=True, haps=False, reads=False, get_coding=get_coding)
+    InputOutput.readInPedigreeFromInputs(genotypes, args, genotypes=True, haps=False, reads=False, update_coding=True)
     if len(genotypes) == 0:
-        print('ERROR: no genotypes supplied. Please supply them with the -genotypes or -ped options\nExiting...')
+        print('ERROR: no genotypes supplied. Please supply them with the -ped or -genotypes options\nExiting...')
         sys.exit(2)
     print(f'Read in {len(genotypes)} individuals with {genotypes.nLoci} markers')
 
@@ -524,19 +524,17 @@ def decode(args):
     """Read in a number of .ped files and decode to AlphaGenes format (.genotypes)
     The allele coding is read (interpreted) from the first .ped file"""
     print(f"Decoding: {', '.join(args.decode)}")
-    get_coding = True  # get the coding from the first ped file
     allele_coding = None
     for pedfile in args.decode:
         basename = pedfile.split('.')[0]
         pedigree = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
         pedigree.allele_coding = allele_coding
-        print(f'  Reading and decoding {pedfile}...')
-        pedigree.readInPed(pedfile, args.startsnp, args.stopsnp, haps=True, get_coding=get_coding)
-        print(f'  Writing decoded file to {basename}.genotypes')
+        print(f'Reading and decoding {pedfile}...')
+        pedigree.readInPed(pedfile, args.startsnp, args.stopsnp, haps=True, update_coding=True)
+        print(f'Writing decoded file to {basename}.genotypes')
         pedigree.writeGenotypes(f'{basename}.genotypes')
-        
+
         # Use previously read allele coding for each subsequent file
-        get_coding = False
         allele_coding = pedigree.allele_coding
 
 
@@ -556,21 +554,10 @@ def main():
     # Set random seed
     set_seed(args)
 
+    # PLINK .ped decode to AlphaGenes format
     if args.decode:
         decode(args)
         sys.exit(0)
-        # true = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
-        # true.readInPed('true.ped', args.startsnp, args.stopsnp, haps=False, get_coding=True)
-        # true.writeGenotypes('true.recoded')
-        # masked = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
-        # masked.allele_coding = true.allele_coding
-        # masked.readInPed('masked.ped', args.startsnp, args.stopsnp, haps=False, get_coding=False)
-        # masked.writeGenotypes('masked.recoded')
-        # imputed = Pedigree.Pedigree(constructor=Pedigree.PlantImputeIndividual)
-        # imputed.allele_coding = true.allele_coding
-        # imputed.readInPed('imputed.ped', args.startsnp, args.stopsnp, haps=False, get_coding=False)
-        # imputed.writeGenotypes('imputed.recoded')
-        # sys.exit(2)
 
     # Are we using PLINK plain text or AlphaGenes format
     args.file_format = None  # Monkey patch args - makes it easy to pass to functions
