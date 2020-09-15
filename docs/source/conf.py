@@ -22,7 +22,7 @@ copyright = '2019, Steve Thorn, Andrew Whalen, John M Hickey'
 author = 'Steve Thorn, Andrew Whalen, John M Hickey'
 
 # The full version, including alpha/beta/rc tags
-release = '1.5.1'
+release = '1.5.2'
 
 
 # -- General configuration ---------------------------------------------------
