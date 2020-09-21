@@ -75,7 +75,9 @@ def getargs():
     algorithm_parser.add_argument('-incorrect_loci', action='store_true', required=False,
                                   help='When building a haplotype library, print the average number of loci '
                                   'that were incorrectly sampled from the hidden Markov model.')
-    
+    algorithm_parser.add_argument('-overwrite', action='store_true', required=False,
+                                  help='Overwrite imputed genotypes with original values at non-missing loci. Default: False')
+
     # Multithreading options
     multithread_parser = parser.add_argument_group('Multithreading Options')
     InputOutput.add_arguments_from_dictionary(multithread_parser, InputOutput.get_multithread_options(), options=['maxthreads', 'iothreads'])
@@ -166,6 +168,14 @@ def correct_haplotypes(paternal_haplotype, maternal_haplotype, true_genotype, ma
     return np.sum(mask)
 
 
+def correct_genotypes(true, imputed):
+    """Set imputed genotypes to true genotypes at non-missing loci"""
+    non_missing = true != 9
+    n_corrected = (imputed[non_missing] != true[non_missing]).sum()
+    imputed[non_missing] = true[non_missing]
+    return n_corrected
+
+
 def sample_haplotypes(model, individual, haplotype_library, calling_threshold):
     """Sample haplotypes for an individual using haplotype library 'haplotype_library'
     Note: the supplied haplotype_library should *not* contain a copy of the individual's haplotypes"""
@@ -235,14 +245,19 @@ def impute_individuals(model, args, pedigree, haplotype_library):
     # Iterate over all individuals in the Pedigree()
     individuals = pedigree
 
+    # Store input genotypes for later comparison with imputed ones
+    if args.overwrite:
+        for individual in individuals:
+            individual.input_genotypes = individual.genotypes.copy()
+
     # Sample the haplotype library for each individual
     if args.founders:
         haplotype_library_sample = (haplotype_library.sample_only_identifiers(individual.founders)
                                     for individual in individuals)
     else:
         haplotype_library_sample = (haplotype_library.sample_targeted(args.n_haplotypes,
-                                                                        individual.genotypes,
-                                                                        args.n_windows)
+                                                                      individual.genotypes,
+                                                                      args.n_windows)
                                     for individual in individuals)
 
     # Arguments to pass to get_dosages() via map() and ThreadPoolExecutor.map()
@@ -260,6 +275,13 @@ def impute_individuals(model, args, pedigree, haplotype_library):
     # Run the imputation - get_dosages is not called until `results` is enumerated
     for _ in results:
         pass
+
+    # If requested, correct imputed loci at non-missing markers
+    n_corrected = 0
+    if args.overwrite:
+        for individual in individuals:
+            n_corrected += correct_genotypes(individual.input_genotypes, individual.genotypes)
+        print(f'  average number of corrected loci: {n_corrected/len(individuals):.3g}')
 
 
 def set_seed(args):

@@ -132,6 +132,9 @@ Algorithm options
       -incorrect_loci       When building a haplotype library, print the average
                             number of loci that were incorrectly sampled from the
                             hidden Markov model.
+      -overwrite            Overwrite imputed genotypes with original values at
+                            non-missing loci. Default: False
+
 
 The ``-incorrect_loci`` option displays diagnostic information that can be used to assess the quality of haplotype library creation. It shows the average number (averaged over individuals) of loci that were incorrectly sampled from the hidden Markov model. A smaller number is better. In particular, it shows when additional sampling rounds (``-n_sample_rounds`` option) give no improvement (the number of incorrect loci does not improve). If this happens, the accuracy can be increased by increasing the number of sampled haplotypes (``-n_haplotypes``) rather than using more sampling rounds.
 
