@@ -12,13 +12,14 @@
 
 ## User guide
 
-See `alphaplantimpute2.pdf` in this repository.
+See `docs/source/index.rst` or `alphaplantimpute2.pdf` in this repository.
 
 ## Build instructions
 
 Run the following to build the Python wheel and user guide. You will need an installation of [LaTex](https://www.latex-project.org/get) to build the user guide.
 
-    git clone git@github.com:AlphaGenes/AlphaPlantImpute2.git
+    git clone https://github.com/AlphaGenes/AlphaPlantImpute2.git
+    cd AlphaPlantImpute2
     git submodule init
     git submodule update
     bash build_pipeline.sh 
