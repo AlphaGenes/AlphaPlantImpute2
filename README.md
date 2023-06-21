@@ -8,7 +8,7 @@
 
 ## Installation
 
-    wget https://github.com/AlphaGenes/AlphaPlantImpute2/blob/master/alphaplantimpute2-1.5.3-py3-none-any.whl
+    wget https://github.com/AlphaGenes/AlphaPlantImpute2/raw/main/alphaplantimpute2-1.5.3-py3-none-any.whl
     pip install alphaplantimpute2-1.5.3-py3-none-any.whl
 
 ## User guide
